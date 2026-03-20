@@ -1,9 +1,10 @@
 /**
- * Anonymous Session Helper for CAP v1
+ * Anonymous Visitor Identity Helper for CAP v1
  * Provides a stable, persistent identity for basic interaction tracking and anti-spam.
+ * Renamed from "session" to reflect that this is a long-lived browser identity.
  */
 
-const SESSION_KEY = 'cap_anonymous_session_id';
+const VISITOR_KEY = 'cap_anonymous_visitor_id';
 
 /**
  * Generates a standard UUID v4
@@ -17,20 +18,18 @@ function generateUUID(): string {
 }
 
 /**
- * Retrieves the existing session ID from localStorage or creates a new one.
+ * Retrieves the existing visitor ID from localStorage or creates a new one.
  */
-export function getOrCreateAnonymousSessionId(): string {
+export function getOrCreateVisitorId(): string {
     if (typeof window === 'undefined') return 'server-side';
 
-    let sessionId = localStorage.getItem(SESSION_KEY);
+    let visitorId = localStorage.getItem(VISITOR_KEY);
 
-    if (!sessionId) {
-        sessionId = generateUUID();
-        localStorage.setItem(SESSION_KEY, sessionId);
-        console.log('[Session] New anonymous identity created:', sessionId);
-    } else {
-        // console.log('[Session] Using existing identity:', sessionId);
+    if (!visitorId) {
+        visitorId = generateUUID();
+        localStorage.setItem(VISITOR_KEY, visitorId);
+        console.log('[Identity] New anonymous visitor created:', visitorId);
     }
 
-    return sessionId;
+    return visitorId;
 }

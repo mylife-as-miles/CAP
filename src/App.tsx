@@ -8,7 +8,7 @@ import { MicOrb } from '@/src/components/MicOrb';
 import { TrendCard } from '@/src/components/TrendCard';
 import { supabase } from '@/src/lib/supabase';
 import { cn } from '@/src/lib/utils';
-import { getOrCreateAnonymousSessionId } from '@/src/lib/session';
+import { getOrCreateVisitorId } from '@/src/lib/session';
 import { trackEvent, initAnalytics } from '@/src/lib/analytics';
 
 type Screen = 'home' | 'listening' | 'checking' | 'results' | 'top' | 'history' | 'profile' | 'notifications' | 'trends';
@@ -151,7 +151,7 @@ export default function App() {
 
   const openClaimShareCard = async (target: ClaimTarget) => {
     setIsShared(false);
-    const sessionId = getOrCreateAnonymousSessionId();
+    const visitorId = getOrCreateVisitorId();
 
     // Optimistic Update
     if (target === 'featured' && featuredCap) {
@@ -164,7 +164,7 @@ export default function App() {
 
       const { data, error } = await supabase.rpc('increment_share_count', {
         target_claim_id: featuredCap.id,
-        user_session_id: sessionId
+        p_visitor_id: visitorId
       });
 
       if (!error && data === 'counted') {
@@ -191,7 +191,7 @@ export default function App() {
 
     const { data, error } = await supabase.rpc('increment_share_count', {
       target_claim_id: target,
-      user_session_id: sessionId
+      p_visitor_id: visitorId
     });
 
     if (!error && data === 'counted') {
@@ -207,7 +207,7 @@ export default function App() {
   const handleLaugh = async (e: React.MouseEvent, target: ClaimTarget) => {
     e.stopPropagation();
     triggerLaughCelebration(target);
-    const sessionId = getOrCreateAnonymousSessionId();
+    const visitorId = getOrCreateVisitorId();
 
     // Optimistic Update
     if (target === 'featured' && featuredCap) {
@@ -219,7 +219,7 @@ export default function App() {
 
       const { data, error } = await supabase.rpc('increment_laugh_count', {
         target_claim_id: featuredCap.id,
-        user_session_id: sessionId
+        p_visitor_id: visitorId
       });
 
       if (!error && data === 'counted') {
@@ -245,7 +245,7 @@ export default function App() {
 
     const { data, error } = await supabase.rpc('increment_laugh_count', {
       target_claim_id: target,
-      user_session_id: sessionId
+      p_visitor_id: visitorId
     });
 
     if (!error && data === 'counted') {
@@ -258,10 +258,10 @@ export default function App() {
   };
 
   const handleViewClaim = async (claimId: string) => {
-    const sessionId = getOrCreateAnonymousSessionId();
+    const visitorId = getOrCreateVisitorId();
     await supabase.rpc('increment_view_count', {
       target_claim_id: claimId,
-      user_session_id: sessionId
+      p_visitor_id: visitorId
     });
     trackEvent('verdict_viewed', claimId);
   };

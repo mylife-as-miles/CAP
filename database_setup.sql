@@ -1,6 +1,47 @@
--- Create claims table for content and metadata
+-- ==========================================
+-- CAP v1 Production-Ready Schema
+-- ==========================================
+
+-- 0. MIGRATION LOGIC (Handles transition from previous draft schemas)
+
+-- Rename app_sessions to app_visitors if it exists
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'app_sessions' AND table_schema = 'public') THEN
+        ALTER TABLE public.app_sessions RENAME TO app_visitors;
+        ALTER TABLE public.app_visitors RENAME COLUMN session_id TO visitor_id;
+    END IF;
+END $$;
+
+-- Rename session_id to visitor_id in claim_interactions if needed
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'claim_interactions' AND column_name = 'session_id' AND table_schema = 'public') THEN
+        ALTER TABLE public.claim_interactions RENAME COLUMN session_id TO visitor_id;
+    END IF;
+END $$;
+
+-- Rename session_id to visitor_id in analytics_events if needed
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'analytics_events' AND column_name = 'session_id' AND table_schema = 'public') THEN
+        ALTER TABLE public.analytics_events RENAME COLUMN session_id TO visitor_id;
+    END IF;
+END $$;
+
+-- 1. UTILITIES
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 2. CORE TABLES
 CREATE TABLE IF NOT EXISTS public.claims (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    slug TEXT UNIQUE, 
     title TEXT NOT NULL,
     claim_text TEXT NOT NULL,
     source_url TEXT,
@@ -16,7 +57,6 @@ CREATE TABLE IF NOT EXISTS public.claims (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create claim_metrics table for engagement counters
 CREATE TABLE IF NOT EXISTS public.claim_metrics (
     claim_id UUID REFERENCES public.claims(id) ON DELETE CASCADE PRIMARY KEY,
     laugh_count INTEGER DEFAULT 0,
@@ -25,21 +65,16 @@ CREATE TABLE IF NOT EXISTS public.claim_metrics (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create claim_interactions for anti-spam and deduplication
 CREATE TABLE IF NOT EXISTS public.claim_interactions (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     claim_id UUID REFERENCES public.claims(id) ON DELETE CASCADE,
-    session_id TEXT NOT NULL,
+    visitor_id TEXT NOT NULL,
     interaction_type TEXT NOT NULL CHECK (interaction_type IN ('laugh', 'share', 'view')),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Add indexes for fast interaction lookup
-CREATE INDEX IF NOT EXISTS idx_interactions_lookup ON public.claim_interactions (claim_id, session_id, interaction_type);
-
--- Create app_sessions for high-level user lifecycle tracking
-CREATE TABLE IF NOT EXISTS public.app_sessions (
-    session_id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS public.app_visitors (
+    visitor_id TEXT PRIMARY KEY,
     first_seen_at TIMESTAMPTZ DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ DEFAULT NOW(),
     first_seen_path TEXT,
@@ -50,90 +85,122 @@ CREATE TABLE IF NOT EXISTS public.app_sessions (
     laughs_count INTEGER DEFAULT 0
 );
 
--- Create analytics_events for granular event logging
 CREATE TABLE IF NOT EXISTS public.analytics_events (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES public.app_sessions(session_id) ON DELETE CASCADE,
-    event_name TEXT NOT NULL,
+    visitor_id TEXT NOT NULL REFERENCES public.app_visitors(visitor_id) ON DELETE CASCADE,
+    event_name TEXT NOT NULL CHECK (
+        event_name IN ('session_started', 'claim_checked', 'verdict_viewed', 'laugh_clicked', 'share_clicked', 'top_caps_viewed')
+    ),
     claim_id UUID REFERENCES public.claims(id) ON DELETE SET NULL,
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Add indexes for analytics performance
-CREATE INDEX IF NOT EXISTS idx_analytics_session ON public.analytics_events (session_id);
-CREATE INDEX IF NOT EXISTS idx_analytics_event_name ON public.analytics_events (event_name);
+-- 3. INDEXES & CONSTRAINTS
+CREATE INDEX IF NOT EXISTS idx_interactions_lookup ON public.claim_interactions (claim_id, visitor_id, interaction_type);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_laugh_per_visitor
+ON public.claim_interactions (claim_id, visitor_id, interaction_type)
+WHERE interaction_type = 'laugh';
+
+CREATE INDEX IF NOT EXISTS idx_claims_featured_published
+ON public.claims (is_featured, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_visitor ON public.analytics_events (visitor_id);
 CREATE INDEX IF NOT EXISTS idx_analytics_created_at ON public.analytics_events (created_at);
-CREATE INDEX IF NOT EXISTS idx_analytics_claim_id ON public.analytics_events (claim_id);
 
--- Enable Row Level Security
-ALTER TABLE public.claims ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.claim_metrics ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.claim_interactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.app_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.analytics_events ENABLE ROW LEVEL SECURITY;
+-- 4. TRIGGERS
+DROP TRIGGER IF EXISTS set_claims_updated_at ON public.claims;
+CREATE TRIGGER set_claims_updated_at BEFORE UPDATE ON public.claims
+FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
--- Set up RLS Policies
-DROP POLICY IF EXISTS "Allow public read access to published claims" ON public.claims;
-CREATE POLICY "Allow public read access to published claims" ON public.claims FOR SELECT USING (status = 'published');
+DROP TRIGGER IF EXISTS set_metrics_updated_at ON public.claim_metrics;
+CREATE TRIGGER set_metrics_updated_at BEFORE UPDATE ON public.claim_metrics
+FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
-DROP POLICY IF EXISTS "Allow public read access to metrics" ON public.claim_metrics;
-CREATE POLICY "Allow public read access to metrics" ON public.claim_metrics FOR SELECT 
-USING (EXISTS (SELECT 1 FROM public.claims WHERE public.claims.id = public.claim_metrics.claim_id AND status = 'published'));
+CREATE OR REPLACE FUNCTION public.handle_new_claim_metrics() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.claim_metrics (claim_id) VALUES (NEW.id) ON CONFLICT DO NOTHING;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- Deny direct client writes to interactions/analytics (only allowed via RPC)
-DROP POLICY IF EXISTS "Allow public interaction entry" ON public.claim_interactions;
-DROP POLICY IF EXISTS "Allow public session entry" ON public.app_sessions;
-DROP POLICY IF EXISTS "Allow public event entry" ON public.analytics_events;
+DROP TRIGGER IF EXISTS on_claim_created ON public.claims;
+CREATE TRIGGER on_claim_created AFTER INSERT ON public.claims
+FOR EACH ROW EXECUTE FUNCTION public.handle_new_claim_metrics();
 
--- RPC for incrementing laugh_count with anti-spam
-CREATE OR REPLACE FUNCTION public.increment_laugh_count(target_claim_id UUID, user_session_id TEXT)
+-- 5. FUNCTIONAL LOGIC (RPCs)
+CREATE OR REPLACE FUNCTION public.increment_laugh_count(target_claim_id UUID, p_visitor_id TEXT)
 RETURNS TEXT AS $$
 DECLARE
     counted BOOLEAN;
 BEGIN
-    SELECT EXISTS (SELECT 1 FROM public.claim_interactions WHERE claim_id = target_claim_id AND session_id = user_session_id AND interaction_type = 'laugh') INTO counted;
+    IF NOT EXISTS (SELECT 1 FROM public.claims WHERE id = target_claim_id AND status = 'published') THEN
+        RETURN 'not_allowed';
+    END IF;
+
+    SELECT EXISTS (SELECT 1 FROM public.claim_interactions WHERE claim_id = target_claim_id AND visitor_id = p_visitor_id AND interaction_type = 'laugh') INTO counted;
     IF counted THEN RETURN 'already_counted'; END IF;
 
-    INSERT INTO public.claim_interactions (claim_id, session_id, interaction_type) VALUES (target_claim_id, user_session_id, 'laugh');
-    UPDATE public.claim_metrics SET laugh_count = laugh_count + 1, updated_at = NOW() WHERE claim_id = target_claim_id;
+    INSERT INTO public.claim_interactions (claim_id, visitor_id, interaction_type)
+    VALUES (target_claim_id, p_visitor_id, 'laugh');
+
+    INSERT INTO public.claim_metrics (claim_id, laugh_count)
+    VALUES (target_claim_id, 1)
+    ON CONFLICT (claim_id) DO UPDATE SET laugh_count = public.claim_metrics.laugh_count + 1;
+
     RETURN 'counted';
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- RPC for incrementing share_count with rate-limit
-CREATE OR REPLACE FUNCTION public.increment_share_count(target_claim_id UUID, user_session_id TEXT)
+CREATE OR REPLACE FUNCTION public.increment_share_count(target_claim_id UUID, p_visitor_id TEXT)
 RETURNS TEXT AS $$
 DECLARE
     last_share TIMESTAMPTZ;
 BEGIN
-    SELECT created_at FROM public.claim_interactions WHERE claim_id = target_claim_id AND session_id = user_session_id AND interaction_type = 'share' ORDER BY created_at DESC LIMIT 1 INTO last_share;
+    IF NOT EXISTS (SELECT 1 FROM public.claims WHERE id = target_claim_id AND status = 'published') THEN
+        RETURN 'not_allowed';
+    END IF;
+
+    SELECT created_at FROM public.claim_interactions WHERE claim_id = target_claim_id AND visitor_id = p_visitor_id AND interaction_type = 'share' ORDER BY created_at DESC LIMIT 1 INTO last_share;
     IF last_share IS NOT NULL AND (NOW() - last_share) < INTERVAL '1 minute' THEN RETURN 'rate_limited'; END IF;
 
-    INSERT INTO public.claim_interactions (claim_id, session_id, interaction_type) VALUES (target_claim_id, user_session_id, 'share');
-    UPDATE public.claim_metrics SET share_count = share_count + 1, updated_at = NOW() WHERE claim_id = target_claim_id;
+    INSERT INTO public.claim_interactions (claim_id, visitor_id, interaction_type)
+    VALUES (target_claim_id, p_visitor_id, 'share');
+
+    INSERT INTO public.claim_metrics (claim_id, share_count)
+    VALUES (target_claim_id, 1)
+    ON CONFLICT (claim_id) DO UPDATE SET share_count = public.claim_metrics.share_count + 1;
+
     RETURN 'counted';
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- RPC for incrementing view_count with deduplication
-CREATE OR REPLACE FUNCTION public.increment_view_count(target_claim_id UUID, user_session_id TEXT)
+CREATE OR REPLACE FUNCTION public.increment_view_count(target_claim_id UUID, p_visitor_id TEXT)
 RETURNS TEXT AS $$
 DECLARE
     last_view TIMESTAMPTZ;
 BEGIN
-    SELECT created_at FROM public.claim_interactions WHERE claim_id = target_claim_id AND session_id = user_session_id AND interaction_type = 'view' ORDER BY created_at DESC LIMIT 1 INTO last_view;
+    IF NOT EXISTS (SELECT 1 FROM public.claims WHERE id = target_claim_id AND status = 'published') THEN
+        RETURN 'not_allowed';
+    END IF;
+
+    SELECT created_at FROM public.claim_interactions WHERE claim_id = target_claim_id AND visitor_id = p_visitor_id AND interaction_type = 'view' ORDER BY created_at DESC LIMIT 1 INTO last_view;
     IF last_view IS NOT NULL AND (NOW() - last_view) < INTERVAL '10 minutes' THEN RETURN 'already_counted'; END IF;
 
-    INSERT INTO public.claim_interactions (claim_id, session_id, interaction_type) VALUES (target_claim_id, user_session_id, 'view');
-    UPDATE public.claim_metrics SET view_count = view_count + 1, updated_at = NOW() WHERE claim_id = target_claim_id;
+    INSERT INTO public.claim_interactions (claim_id, visitor_id, interaction_type)
+    VALUES (target_claim_id, p_visitor_id, 'view');
+
+    INSERT INTO public.claim_metrics (claim_id, view_count)
+    VALUES (target_claim_id, 1)
+    ON CONFLICT (claim_id) DO UPDATE SET view_count = public.claim_metrics.view_count + 1;
+
     RETURN 'counted';
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- RPC for logging analytics events
 CREATE OR REPLACE FUNCTION public.log_analytics_event(
-    p_session_id TEXT,
+    p_visitor_id TEXT,
     p_event_name TEXT,
     p_claim_id UUID DEFAULT NULL,
     p_metadata JSONB DEFAULT '{}'::jsonb,
@@ -143,35 +210,82 @@ CREATE OR REPLACE FUNCTION public.log_analytics_event(
 )
 RETURNS void AS $$
 BEGIN
-    INSERT INTO public.app_sessions (session_id, first_seen_path, user_agent, referrer)
-    VALUES (p_session_id, p_path, p_ua, p_ref)
-    ON CONFLICT (session_id) DO UPDATE SET last_seen_at = NOW(), user_agent = COALESCE(p_ua, public.app_sessions.user_agent), referrer = COALESCE(p_ref, public.app_sessions.referrer);
+    INSERT INTO public.app_visitors (visitor_id, first_seen_path, user_agent, referrer)
+    VALUES (p_visitor_id, p_path, p_ua, p_ref)
+    ON CONFLICT (visitor_id) DO UPDATE SET 
+        last_seen_at = NOW(),
+        user_agent = COALESCE(p_ua, public.app_visitors.user_agent),
+        referrer = COALESCE(p_ref, public.app_visitors.referrer);
 
-    INSERT INTO public.analytics_events (session_id, event_name, claim_id, metadata) VALUES (p_session_id, p_event_name, p_claim_id, p_metadata);
+    INSERT INTO public.analytics_events (visitor_id, event_name, claim_id, metadata)
+    VALUES (p_visitor_id, p_event_name, p_claim_id, p_metadata);
 
     IF p_event_name = 'claim_checked' THEN
-        UPDATE public.app_sessions SET claims_checked_count = claims_checked_count + 1 WHERE session_id = p_session_id;
+        UPDATE public.app_visitors SET claims_checked_count = claims_checked_count + 1 WHERE visitor_id = p_visitor_id;
     ELSIF p_event_name = 'share_clicked' THEN
-        UPDATE public.app_sessions SET shares_count = shares_count + 1 WHERE session_id = p_session_id;
+        UPDATE public.app_visitors SET shares_count = shares_count + 1 WHERE visitor_id = p_visitor_id;
     ELSIF p_event_name = 'laugh_clicked' THEN
-        UPDATE public.app_sessions SET laughs_count = laughs_count + 1 WHERE session_id = p_session_id;
+        UPDATE public.app_visitors SET laughs_count = laughs_count + 1 WHERE visitor_id = p_visitor_id;
     END IF;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- Auto-create metrics for new claims
-CREATE OR REPLACE FUNCTION public.handle_new_claim_metrics() RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO public.claim_metrics (claim_id) VALUES (NEW.id);
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+-- 6. SECURITY & ACCESS CONTROL
+ALTER TABLE public.claims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.claim_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.claim_interactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_visitors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.analytics_events ENABLE ROW LEVEL SECURITY;
 
-DROP TRIGGER IF EXISTS on_claim_created ON public.claims;
-CREATE TRIGGER on_claim_created AFTER INSERT ON public.claims FOR EACH ROW EXECUTE FUNCTION public.handle_new_claim_metrics();
+DROP POLICY IF EXISTS "Allow public select published claims" ON public.claims;
+CREATE POLICY "Allow public select published claims" ON public.claims FOR SELECT USING (status = 'published');
 
--- Seed data
-INSERT INTO public.claims (title, claim_text, category, verdict, confidence, reason_summary, details, sources, is_featured, status)
+DROP POLICY IF EXISTS "Allow public select metrics" ON public.claim_metrics;
+CREATE POLICY "Allow public select metrics" ON public.claim_metrics FOR SELECT 
+USING (EXISTS (SELECT 1 FROM public.claims WHERE public.claims.id = public.claim_metrics.claim_id AND status = 'published'));
+
+GRANT EXECUTE ON FUNCTION public.increment_laugh_count(UUID, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_share_count(UUID, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_view_count(UUID, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.log_analytics_event(TEXT, TEXT, UUID, JSONB, TEXT, TEXT, TEXT) TO anon, authenticated;
+
+-- 7. SEED DATA (Idempotent)
+INSERT INTO public.claims (slug, title, claim_text, category, verdict, confidence, reason_summary, details, sources, is_featured, status)
 VALUES 
-('Moon Landing Logic', 'The moon landing was faked using early CGI from a time-traveling filmmaker.', 'Science', 'CAP', 99, 'CGI tech was non-existent in 1969. Filmmakers of the era were too young.', 'Commercial CGI required to fake such footage did not exist until the 1980s. Physical evidence and lunar samples confirm the missions.', '[{"name": "NASA", "url": "https://nasa.gov", "text": "Lunar samples and telemetry verify Apollo 11."}]'::jsonb, TRUE, 'published'),
-('Salt Water Fatigue', 'Drinking 4L of salt water cures all winter fatigue instantly.', 'Health', 'CAP', 95, 'Excessive salt intake causes dehydration and hypernatremia.', 'Medical professionals warn that consuming excessive salt water can lead to severe dehydration and dangerous electrolyte imbalances.', '[{"name": "WHO", "url": "https://who.int", "text": "Excessive sodium is linked to adverse health outcomes."}]'::jsonb, FALSE, 'published');
+(
+  'moon-landing-fake',
+  'Moon Landing Logic', 
+  'The moon landing was faked using early CGI from a time-traveling filmmaker.', 
+  'Science', 
+  'CAP', 
+  99, 
+  'CGI tech was non-existent in 1969. Filmmakers of the era were too young.',
+  'Commercial CGI required to fake such footage did not exist until the 1980s.',
+  '[{"name": "NASA", "url": "https://nasa.gov", "text": "Lunar samples and telemetry verify Apollo 11."}]'::jsonb,
+  TRUE, 
+  'published'
+),
+(
+  'salt-water-fatigue',
+  'Salt Water Fatigue', 
+  'Drinking 4L of salt water cures all winter fatigue instantly.', 
+  'Health', 
+  'CAP', 
+  95, 
+  'Excessive salt intake causes dehydration and hypernatremia.',
+  'Medical professionals warn that consuming excessive salt water can lead to severe dehydration.',
+  '[{"name": "WHO", "url": "https://who.int", "text": "Excessive sodium is linked to adverse health outcomes."}]'::jsonb,
+  FALSE, 
+  'published'
+)
+ON CONFLICT (slug) DO UPDATE SET
+    title = EXCLUDED.title,
+    claim_text = EXCLUDED.claim_text,
+    category = EXCLUDED.category,
+    verdict = EXCLUDED.verdict,
+    confidence = EXCLUDED.confidence,
+    reason_summary = EXCLUDED.reason_summary,
+    details = EXCLUDED.details,
+    sources = EXCLUDED.sources,
+    is_featured = EXCLUDED.is_featured,
+    status = EXCLUDED.status;
