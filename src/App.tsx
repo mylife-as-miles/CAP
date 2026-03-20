@@ -260,6 +260,7 @@ export default function App() {
     endVoiceSession,
     startVoiceSession,
     status: voiceStatus,
+    transcript,
   } = useCapVoiceSession({
     visitorId: visitorIdRef.current,
     onCheckClaim: async (input) => {
@@ -837,9 +838,15 @@ export default function App() {
                 ))}
               </div>
 
-              <div className="mt-12 text-center max-w-3xl px-4">
-                <p className="font-headline text-3xl md:text-5xl font-black text-white leading-tight tracking-tight">
-                  "Yo Cap, <span className="text-outline">is this true? I saw a post that said...</span>"
+              <div className="min-h-[100px] flex items-center justify-center">
+                <p className="font-headline text-3xl md:text-5xl font-black text-white leading-tight tracking-tight italic">
+                  {transcript && transcript.length > 0 ? (
+                    <>"{transcript[transcript.length - 1].text}"</>
+                  ) : (
+                    <>
+                      "Yo Cap, <span className="text-outline">is this true? I saw a post that said...</span>"
+                    </>
+                  )}
                 </p>
               </div>
 

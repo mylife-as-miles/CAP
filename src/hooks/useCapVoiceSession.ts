@@ -73,5 +73,6 @@ export function useCapVoiceSession({
     sendUserMessage: conversation.sendUserMessage,
     startVoiceSession,
     status: conversation.status,
+    transcript: conversation.transcript,
   };
 }
