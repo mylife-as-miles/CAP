@@ -6,10 +6,32 @@ import { Header, MobileNav } from '@/src/components/Navigation';
 import { LaughButton } from '@/src/components/LaughButton';
 import { MicOrb } from '@/src/components/MicOrb';
 import { TrendCard } from '@/src/components/TrendCard';
+import { supabase } from '@/src/lib/supabase';
 import { cn } from '@/src/lib/utils';
 
 type Screen = 'home' | 'listening' | 'checking' | 'results' | 'top' | 'history' | 'profile' | 'notifications' | 'trends';
-type ClaimTarget = 'featured' | number;
+type ClaimTarget = 'featured' | string;
+
+interface ClaimMetrics {
+  laugh_count: number;
+  share_count: number;
+  view_count: number;
+}
+
+interface Claim {
+  id: string;
+  title: string;
+  claim_text: string;
+  category: string;
+  verdict: 'CAP' | 'NO CAP' | 'HALF CAP';
+  confidence: number;
+  reason_summary: string;
+  details?: string;
+  sources?: { name: string; url: string; text?: string }[];
+  is_featured: boolean;
+  created_at: string;
+  claim_metrics: ClaimMetrics;
+}
 
 type ShareCardData = {
   footer: string;
@@ -36,106 +58,49 @@ export default function App() {
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
   const [showNotificationToast, setShowNotificationToast] = useState<string | null>(null);
-  const [featuredCap, setFeaturedCap] = useState({
-    claim: "The moon landing was faked using early CGI from a time-traveling James Cameron.",
-    category: 'Science',
-    details:
-      "James Cameron was 14 years old during the 1969 moon landing. The CGI required to fake that footage also did not exist until much later.",
-    laughedAt: 42800,
-    shares: 12000,
-  });
 
-  const [topCapsData, setTopCapsData] = useState([
-    {
-      id: 1,
-      claim: "Drinking 4L of salt water cures all winter fatigue instantly.",
-      shares: 8400,
-      laughedAt: 12000,
-      dateAdded: '2026-03-18',
-      category: 'Health',
-      details: "This claim originated from a viral TikTok video. Medical professionals warn that consuming excessive salt water can lead to severe dehydration and hypernatremia.",
-      sources: [
-        { name: 'World Health Organization', url: 'https://who.int', text: '"Excessive sodium intake is linked to adverse health outcomes and does not cure fatigue."' },
-        { name: 'Mayo Clinic', url: 'https://mayoclinic.org', text: '"Drinking large amounts of salt water can cause dangerous electrolyte imbalances."' }
-      ]
-    },
-    {
-      id: 2,
-      claim: "Eating raw onions before bed prevents all seasonal allergies.",
-      shares: 5200,
-      laughedAt: 8000,
-      dateAdded: '2026-03-17',
-      category: 'Health',
-      details: "A persistent myth circulated in holistic health forums. There is no scientific evidence linking raw onion consumption to allergy prevention.",
-      sources: [
-        { name: 'American Academy of Allergy', url: 'https://aaaai.org', text: '"There is no clinical evidence supporting onions as a preventative measure for seasonal allergies."' }
-      ]
-    },
-    {
-      id: 3,
-      claim: "5G towers are responsible for the new strain of the common cold.",
-      shares: 4100,
-      laughedAt: 15000,
-      dateAdded: '2026-03-19',
-      category: 'Tech',
-      details: "A recurring conspiracy theory. Viruses cannot be transmitted through radio waves or cellular networks.",
-      sources: [
-        { name: 'FCC', url: 'https://fcc.gov', text: '"Radiofrequency emissions from 5G technology do not cause or transmit viral infections."' },
-        { name: 'CDC', url: 'https://cdc.gov', text: '"The common cold is caused by rhinoviruses, which spread through respiratory droplets, not electromagnetic waves."' }
-      ]
-    },
-    {
-      id: 4,
-      claim: "You can charge your phone by putting it in the microwave for 30 seconds.",
-      shares: 3800,
-      laughedAt: 22000,
-      dateAdded: '2026-03-15',
-      category: 'Tech',
-      details: "An old internet prank that resurfaces occasionally. Microwaving electronics will destroy them and potentially cause a fire.",
-      sources: [
-        { name: 'Consumer Reports', url: 'https://consumerreports.org', text: '"Microwaving any electronic device will cause irreparable damage and poses a severe fire hazard."' }
-      ]
-    },
-    {
-      id: 5,
-      claim: "Staring at the sun for 5 minutes a day improves your vision.",
-      shares: 2900,
-      laughedAt: 9500,
-      dateAdded: '2026-03-16',
-      category: 'Health',
-      details: "Also known as 'sun gazing'. Ophthalmologists strongly advise against this as it can cause permanent retinal damage.",
-      sources: [
-        { name: 'American Academy of Ophthalmology', url: 'https://aao.org', text: '"Looking directly at the sun without proper eye protection can cause solar retinopathy, leading to permanent vision loss."' }
-      ]
-    },
-    {
-      id: 6,
-      claim: "The earth is actually flat and Australia is a hoax.",
-      shares: 1500,
-      laughedAt: 35000,
-      dateAdded: '2026-03-10',
-      category: 'Science',
-      details: "A combination of two popular conspiracy theories. Satellite imagery and basic physics disprove the flat earth theory, and Australia is a real continent.",
-      sources: [
-        { name: 'NASA', url: 'https://nasa.gov', text: '"Decades of satellite imagery and space exploration confirm the Earth is an oblate spheroid."' },
-        { name: 'Australian Government', url: 'https://australia.gov.au', text: '"Australia is a sovereign country and continent with a population of over 26 million people."' }
-      ]
-    },
-    {
-      id: 7,
-      claim: "New legislation will ban all gas-powered vehicles by 2028.",
-      shares: 6000,
-      laughedAt: 2000,
-      dateAdded: '2026-03-19',
-      category: 'Politics',
-      details: "A misinterpretation of a proposed bill that aimed to increase electric vehicle incentives, not ban gas vehicles entirely.",
-      sources: [
-        { name: 'GovTrack', url: 'https://govtrack.us', text: '"The proposed legislation (HR-1042) focuses on tax incentives for EV manufacturers and does not contain provisions banning existing gas-powered vehicles."' }
-      ]
-    },
-  ]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const [featuredCap, setFeaturedCap] = useState<Claim | null>(null);
+  const [topCapsData, setTopCapsData] = useState<Claim[]>([]);
+  const [expandedCards, setExpandedCards] = useState<string[]>([]);
 
-  const [expandedCards, setExpandedCards] = useState<number[]>([]);
+  const fetchClaims = async () => {
+    try {
+      setIsLoading(true);
+
+      // Fetch Featured Claim
+      const { data: featuredData, error: featuredError } = await supabase
+        .from('claims')
+        .select('*, claim_metrics(*)')
+        .eq('is_featured', true)
+        .eq('status', 'published')
+        .maybeSingle();
+
+      if (featuredError) throw featuredError;
+      if (featuredData) setFeaturedCap(featuredData as any);
+
+      // Fetch Top Caps
+      const { data: topData, error: topError } = await supabase
+        .from('claims')
+        .select('*, claim_metrics(*)')
+        .eq('status', 'published')
+        .order('created_at', { ascending: false });
+
+      if (topError) throw topError;
+      setTopCapsData((topData || []) as any);
+
+    } catch (err: any) {
+      console.error('Supabase fetch error:', err);
+      setDataError('Could not sync with the global leaderboard.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchClaims();
+  }, []);
 
   const showToast = (message: string) => {
     setShowNotificationToast(message);
@@ -153,9 +118,9 @@ export default function App() {
     }));
   };
 
-  const buildClaimShareCard = (claim: { category: string; claim: string; laughedAt: number; shares: number }): ShareCardData => ({
+  const buildClaimShareCard = (claim: Claim): ShareCardData => ({
     footer: 'Pulled from CAP\'s live leaderboard.',
-    shareText: `CAP\n"${claim.claim}"`,
+    shareText: `CAP\n"${claim.claim_text}"`,
     shareTitle: 'CAP',
   });
 
@@ -168,37 +133,55 @@ export default function App() {
     });
   };
 
-  const openClaimShareCard = (target: ClaimTarget) => {
+  const openClaimShareCard = async (target: ClaimTarget) => {
     setIsShared(false);
 
-    if (target === 'featured') {
-      const updatedFeaturedCap = { ...featuredCap, shares: featuredCap.shares + 1 };
-      setFeaturedCap(updatedFeaturedCap);
-      setShareCardData(buildClaimShareCard(updatedFeaturedCap));
+    // Optimistic Update
+    if (target === 'featured' && featuredCap) {
+      setFeaturedCap({
+        ...featuredCap,
+        claim_metrics: { ...featuredCap.claim_metrics, share_count: featuredCap.claim_metrics.share_count + 1 }
+      });
+      setShareCardData(buildClaimShareCard(featuredCap));
+      await supabase.rpc('increment_share_count', { target_claim_id: featuredCap.id });
       return;
     }
 
     const currentClaim = topCapsData.find((item) => item.id === target);
     if (!currentClaim) return;
 
-    const updatedClaim = { ...currentClaim, shares: currentClaim.shares + 1 };
-    setTopCapsData((prev) => prev.map((item) => (item.id === target ? updatedClaim : item)));
-    setShareCardData(buildClaimShareCard(updatedClaim));
+    setTopCapsData(prev => prev.map(item => item.id === target ? {
+      ...item,
+      claim_metrics: { ...item.claim_metrics, share_count: item.claim_metrics.share_count + 1 }
+    } : item));
+
+    setShareCardData(buildClaimShareCard(currentClaim));
+    await supabase.rpc('increment_share_count', { target_claim_id: target });
   };
 
-  const handleLaugh = (e: React.MouseEvent, target: ClaimTarget) => {
+  const handleLaugh = async (e: React.MouseEvent, target: ClaimTarget) => {
     e.stopPropagation();
     triggerLaughCelebration(target);
 
-    if (target === 'featured') {
-      setFeaturedCap((prev) => ({ ...prev, laughedAt: prev.laughedAt + 1 }));
+    // Optimistic Update
+    if (target === 'featured' && featuredCap) {
+      setFeaturedCap({
+        ...featuredCap,
+        claim_metrics: { ...featuredCap.claim_metrics, laugh_count: featuredCap.claim_metrics.laugh_count + 1 }
+      });
+      await supabase.rpc('increment_laugh_count', { target_claim_id: featuredCap.id });
       return;
     }
 
-    setTopCapsData((prev) => prev.map((item) => (item.id === target ? { ...item, laughedAt: item.laughedAt + 1 } : item)));
+    setTopCapsData(prev => prev.map(item => item.id === target ? {
+      ...item,
+      claim_metrics: { ...item.claim_metrics, laugh_count: item.claim_metrics.laugh_count + 1 }
+    } : item));
+
+    await supabase.rpc('increment_laugh_count', { target_claim_id: target });
   };
 
-  const toggleExpand = (id: number) => {
+  const toggleExpand = (id: string) => {
     setExpandedCards(prev => prev.includes(id) ? prev.filter(cardId => cardId !== id) : [...prev, id]);
   };
 
@@ -224,9 +207,9 @@ export default function App() {
   const filteredAndSortedTopCaps = topCapsData
     .filter(item => topCapsFilterCategory === 'All' || item.category === topCapsFilterCategory)
     .sort((a, b) => {
-      if (topCapsSortBy === 'Shares') return b.shares - a.shares;
-      if (topCapsSortBy === 'Laughed At') return b.laughedAt - a.laughedAt;
-      if (topCapsSortBy === 'Date Added') return new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime();
+      if (topCapsSortBy === 'Shares') return b.claim_metrics.share_count - a.claim_metrics.share_count;
+      if (topCapsSortBy === 'Laughed At') return b.claim_metrics.laugh_count - a.claim_metrics.laugh_count;
+      if (topCapsSortBy === 'Date Added') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       return 0;
     });
 
@@ -478,31 +461,26 @@ export default function App() {
                   </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <TrendCard
-                    type="CAP"
-                    category="Social Media"
-                    time="2h ago"
-                    claim="Drinking 4L of salt water cures all winter fatigue instantly."
-                    stats="842 researchers checked"
-                    onClick={() => setScreen('results')}
-                    onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
-                  />
-                  <TrendCard
-                    type="NO CAP"
-                    category="Economics"
-                    time="5h ago"
-                    claim="New housing starts in the metro area hit a 10-year high this June."
-                    stats="1.2k sources verified"
-                    onClick={() => setScreen('results')}
-                  />
-                  <TrendCard
-                    type="HALF CAP"
-                    category="Tech News"
-                    time="12h ago"
-                    claim="The new AI model is 400% more efficient at coding than last year."
-                    stats="Nuanced breakdown inside"
-                    onClick={() => setScreen('results')}
-                  />
+                  {isLoading ? (
+                    [1, 2, 3].map(i => (
+                      <div key={i} className="bg-surface h-64 rounded-3xl animate-pulse border border-white/5" />
+                    ))
+                  ) : topCapsData.length > 0 ? (
+                    topCapsData.slice(0, 3).map(item => (
+                      <TrendCard
+                        key={item.id}
+                        type={item.verdict}
+                        category={item.category}
+                        time={new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ago'}
+                        claim={item.claim_text}
+                        stats={`${formatNumber(item.claim_metrics.view_count)} views`}
+                        onClick={() => setScreen('results')}
+                        onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
+                      />
+                    ))
+                  ) : (
+                    <div className="col-span-3 text-center py-12 text-outline">No trending investigations found.</div>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -872,67 +850,77 @@ export default function App() {
                   <Flame className="text-primary" />
                   Most Delusional Claim Today
                 </h2>
-                <motion.div
-                  animate={{ boxShadow: ['0 0 0 rgba(226,36,31,0)', '0 0 20px rgba(226,36,31,0.3)', '0 0 0 rgba(226,36,31,0)'] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  className="bg-surface-high border-2 border-primary/50 rounded-2xl sm:rounded-3xl p-5 sm:p-8 relative"
-                >
-                  {/* Shimmer effect */}
-                  <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
-                    <motion.div
-                      animate={{ x: ['-100%', '200%'] }}
-                      transition={{ duration: 3, repeat: Infinity, ease: "linear", repeatDelay: 1 }}
-                      className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent skew-x-12 z-0"
-                    />
-                  </div>
-                  <div className="absolute top-0 right-0 bg-primary text-white font-label text-[10px] uppercase tracking-widest px-4 py-2 rounded-bl-xl font-bold z-10">
-                    Cap of the Day
-                  </div>
-                  <div className="relative z-10 group/claim cursor-help">
-                    <p className="font-headline text-2xl md:text-4xl font-bold text-white mb-2 leading-tight mt-4">
-                      "{featuredCap.claim}"
-                    </p>
-                    {/* Tooltip on hover over claim text */}
-                    <div className="absolute top-full left-0 mt-2 w-full max-w-md p-5 bg-surface border border-white/10 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.6)] opacity-0 group-hover/claim:opacity-100 transition-all duration-200 pointer-events-none z-50">
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="bg-primary/20 text-primary px-3 py-1 rounded-full font-label text-[10px] uppercase tracking-widest">{featuredCap.category}</span>
-                      </div>
-                      <h4 className="font-label text-xs uppercase tracking-widest text-primary mb-2">Why it's Cap</h4>
-                      <p className="text-white/90 font-body text-sm leading-relaxed normal-case font-normal">
-                        {featuredCap.details}
-                      </p>
-                      <div className="absolute -top-2 left-8 w-4 h-4 bg-surface border-t border-l border-white/10 rotate-45"></div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 mb-6 relative z-10">
-                    <Info size={14} className="text-outline/50" />
-                    <span className="font-label text-[10px] uppercase tracking-widest text-outline/50">Hover claim for details</span>
-                  </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-white/10 pt-6 gap-4 relative z-10">
-                    <div className="flex items-center gap-4 text-outline text-sm font-label uppercase tracking-wider">
-                      <span className="flex items-center gap-2"><Flame size={16} className="text-primary" /> {formatNumber(featuredCap.laughedAt)} Laughed</span>
-                      <span>•</span>
-                      <span>{formatNumber(featuredCap.shares)} Shares</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <LaughButton
-                        celebrationKey={laughCelebrations.featured ?? 0}
-                        onClick={(e) => handleLaugh(e, 'featured')}
-                        className="bg-surface border border-white/10 px-6 py-3 text-sm font-headline font-black uppercase tracking-widest text-white transition-colors hover:bg-white/5"
-                        iconClassName="text-primary"
-                        label="Laugh"
-                        title="Laugh at this claim"
+                {isLoading ? (
+                  <div className="bg-surface-high h-48 rounded-3xl animate-pulse" />
+                ) : featuredCap ? (
+                  <motion.div
+                    animate={{ boxShadow: ['0 0 0 rgba(226,36,31,0)', '0 0 20px rgba(226,36,31,0.3)', '0 0 0 rgba(226,36,31,0)'] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="bg-surface-high border-2 border-primary/50 rounded-2xl sm:rounded-3xl p-5 sm:p-8 relative"
+                  >
+                    {/* Shimmer effect */}
+                    <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+                      <motion.div
+                        animate={{ x: ['-100%', '200%'] }}
+                        transition={{ duration: 3, repeat: Infinity, ease: "linear", repeatDelay: 1 }}
+                        className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent skew-x-12 z-0"
                       />
-                      <button
-                        onClick={() => openClaimShareCard('featured')}
-                        className="flex items-center justify-center gap-2 bg-white text-black px-6 py-3 rounded-full font-headline font-black uppercase tracking-widest text-sm hover:opacity-90 transition-opacity active:scale-95"
-                        title="Share this claim"
-                      >
-                        <Share2 size={16} /> Share
-                      </button>
                     </div>
+                    <div className="absolute top-0 right-0 bg-primary text-white font-label text-[10px] uppercase tracking-widest px-4 py-2 rounded-bl-xl font-bold z-10">
+                      Cap of the Day
+                    </div>
+                    <div className="relative z-10 group/claim cursor-help">
+                      <p className="font-headline text-2xl md:text-4xl font-bold text-white mb-2 leading-tight mt-4">
+                        "{featuredCap.claim_text}"
+                      </p>
+                      {/* Tooltip on hover over claim text */}
+                      <div className="absolute top-full left-0 mt-2 w-full max-w-md p-5 bg-surface border border-white/10 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.6)] opacity-0 group-hover/claim:opacity-100 transition-all duration-200 pointer-events-none z-50">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="bg-primary/20 text-primary px-3 py-1 rounded-full font-label text-[10px] uppercase tracking-widest">{featuredCap.category}</span>
+                        </div>
+                        <h4 className="font-label text-xs uppercase tracking-widest text-primary mb-2">Why it's Cap</h4>
+                        <p className="text-white/90 font-body text-sm leading-relaxed normal-case font-normal">
+                          {featuredCap.reason_summary}
+                        </p>
+                        <div className="absolute -top-2 left-8 w-4 h-4 bg-surface border-t border-l border-white/10 rotate-45"></div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mb-6 relative z-10">
+                      <div className="flex items-center gap-2">
+                        <Info size={14} className="text-outline/50" />
+                        <span className="font-label text-[10px] uppercase tracking-widest text-outline/50">Hover claim for details</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-white/10 pt-6 gap-4 relative z-10">
+                      <div className="flex items-center gap-4 text-outline text-sm font-label uppercase tracking-wider">
+                        <span className="flex items-center gap-2"><Flame size={16} className="text-primary" /> {formatNumber(featuredCap.claim_metrics.laugh_count)} Laughed</span>
+                        <span>•</span>
+                        <span>{formatNumber(featuredCap.claim_metrics.share_count)} Shares</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <LaughButton
+                          celebrationKey={laughCelebrations.featured ?? 0}
+                          onClick={(e) => handleLaugh(e, 'featured')}
+                          className="bg-surface border border-white/10 px-6 py-3 text-sm font-headline font-black uppercase tracking-widest text-white transition-colors hover:bg-white/5"
+                          iconClassName="text-primary"
+                          label="Laugh"
+                          title="Laugh at this claim"
+                        />
+                        <button
+                          onClick={() => openClaimShareCard('featured')}
+                          className="flex items-center justify-center gap-2 bg-white text-black px-6 py-3 rounded-full font-headline font-black uppercase tracking-widest text-sm hover:opacity-90 transition-opacity active:scale-95"
+                          title="Share this claim"
+                        >
+                          <Share2 size={16} /> Share
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <div className="bg-surface border border-dashed border-white/10 p-12 text-center rounded-3xl text-outline">
+                    No featured cap today. Check back soon.
                   </div>
-                </motion.div>
+                )}
               </div>
 
               {/* Caught in 4K Leaderboard */}
@@ -1071,9 +1059,9 @@ export default function App() {
                             #{index + 1}
                           </div>
                           <div className="flex-1">
-                            <p className="text-white font-medium text-lg mb-2">{item.claim}</p>
+                            <p className="text-white font-medium text-lg mb-2">{item.claim_text}</p>
                             <p className="text-outline text-xs font-label uppercase tracking-widest">
-                              {item.category} • {formatNumber(item.shares)} Shares • {formatNumber(item.laughedAt)} Laughed
+                              {item.category} • {formatNumber(item.claim_metrics.share_count)} Shares • {formatNumber(item.claim_metrics.laugh_count)} Laughed
                             </p>
                           </div>
                           <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
@@ -1346,7 +1334,7 @@ export default function App() {
                     {isShared ? <Check size={16} /> : <Share2 size={16} />}
                     {isShared ? 'Shared' : 'Share Now'}
                   </button>
-                  
+
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
