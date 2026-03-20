@@ -609,7 +609,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion={profile.reduceMotion ? 'always' : 'never'}>
-      <div className="min-h-screen bg-background text-white selection:bg-primary selection:text-black">
+      <div className="min-h-screen overflow-x-hidden bg-background text-white selection:bg-primary selection:text-black">
         <Header activeTab={screen} onNavigate={setScreen} unreadCount={unreadNotifications} profile={profile} />
         <AnimatePresence>
           {toast && (
@@ -647,7 +647,7 @@ export default function App() {
                       Gemini grounded when available. Local fallback when not.
                     </span>
                     <div className="space-y-4">
-                      <h1 className="max-w-3xl font-headline text-[clamp(2.8rem,7vw,5.9rem)] font-black uppercase leading-[0.9] tracking-[-0.06em]">
+                      <h1 className="max-w-[12ch] font-headline text-[clamp(2.15rem,12vw,5.9rem)] font-black uppercase leading-[0.9] tracking-[-0.05em]">
                         Check the claim,
                         <br />
                         <span className="text-primary">not the hype.</span>
@@ -689,7 +689,7 @@ export default function App() {
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                       <div>
                         <p className="font-label text-xs uppercase tracking-[0.3em] text-outline">Submit a claim</p>
-                        <h2 className="mt-2 font-headline text-3xl font-black uppercase tracking-[-0.05em]">
+                        <h2 className="mt-2 font-headline text-2xl font-black uppercase tracking-[-0.05em] sm:text-3xl">
                           Public URL or plain text
                         </h2>
                       </div>
@@ -748,7 +748,7 @@ export default function App() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                       <p className="font-label text-xs uppercase tracking-[0.3em] text-primary">Trending investigations</p>
-                      <h2 className="mt-2 font-headline text-4xl font-black uppercase tracking-[-0.05em]">
+                      <h2 className="mt-2 font-headline text-3xl font-black uppercase tracking-[-0.05em] sm:text-4xl">
                         What people are checking now
                       </h2>
                     </div>
@@ -770,7 +770,7 @@ export default function App() {
                         category={result.category}
                         time={formatRelativeTime(result.analyzedAt)}
                         claim={result.title}
-                        stats={`${result.mode === 'live' ? 'Live' : 'Fallback'} • ${result.sourceCount} source${result.sourceCount === 1 ? '' : 's'}`}
+                        stats={`${result.mode === 'live' ? 'Live' : 'Fallback'} | ${result.sourceCount} source${result.sourceCount === 1 ? '' : 's'}`}
                         onClick={() => handleTrendOpen(result.id)}
                         onBadgeClick={() => setScreen('top')}
                       />
@@ -848,7 +848,7 @@ export default function App() {
                     <RefreshCw size={14} className="animate-spin" />
                     Verifying
                   </div>
-                  <h1 className="font-headline text-[clamp(2.2rem,6vw,4.4rem)] font-black uppercase leading-[0.96] tracking-[-0.05em]">
+                  <h1 className="font-headline text-[clamp(2rem,9vw,4.4rem)] font-black uppercase leading-[0.96] tracking-[-0.05em]">
                     {inputValue || 'Preparing investigation'}
                   </h1>
                   <p className="max-w-3xl text-outline">
@@ -948,7 +948,7 @@ export default function App() {
                     </div>
 
                     <div className="space-y-4">
-                      <h1 className="font-headline text-[clamp(3rem,10vw,8rem)] font-black uppercase leading-[0.88] tracking-[-0.08em] text-primary">
+                      <h1 className="font-headline text-[clamp(2.4rem,16vw,8rem)] font-black uppercase leading-[0.88] tracking-[-0.07em] text-primary">
                         {activeResult.verdict}
                       </h1>
                       <p className="max-w-4xl text-lg font-semibold text-white sm:text-2xl">{activeResult.summary}</p>
@@ -1072,6 +1072,587 @@ export default function App() {
                   </div>
                 </section>
               </motion.section>
+            )}
+
+            {screen === 'top' && (
+              <motion.section
+                key="top"
+                initial={{opacity: 0, y: 18}}
+                animate={{opacity: 1, y: 0}}
+                exit={{opacity: 0, y: -18}}
+                className="space-y-8"
+              >
+                <header className="space-y-4 text-center">
+                  <p className="font-label text-xs uppercase tracking-[0.3em] text-primary">Hall of Shame</p>
+                  <h1 className="font-headline text-[clamp(2.35rem,11vw,5.8rem)] font-black uppercase tracking-[-0.06em]">Top Caps</h1>
+                  <p className="mx-auto max-w-3xl text-outline">
+                    Every item here is backed by a stored investigation. Shares, laughs, follows, and saved state all persist locally.
+                  </p>
+                </header>
+
+                {capOfTheDay ? (
+                  <section className="rounded-[2rem] border border-primary/30 bg-[linear-gradient(135deg,rgba(255,59,48,0.15),rgba(20,20,20,0.95))] p-6">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="space-y-3">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 font-label text-[11px] uppercase tracking-[0.28em] text-black">
+                          <Flame size={14} />
+                          Cap of the day
+                        </div>
+                        <h2 className="max-w-4xl font-headline text-[clamp(1.7rem,8vw,3.6rem)] font-black uppercase tracking-[-0.05em]">{capOfTheDay.claim}</h2>
+                        <p className="max-w-3xl text-outline">{capOfTheDay.summary}</p>
+                      </div>
+
+                      <div className="grid min-w-[min(100%,18rem)] gap-3 sm:grid-cols-2 lg:w-[22rem] lg:grid-cols-1">
+                        <ActionButton
+                          icon={Flame}
+                          label={`Laugh | ${formatCompactNumber(capOfTheDay.laughedAt)}`}
+                          onClick={() => handleLaugh(capOfTheDay.resultId)}
+                        />
+                        <ActionButton
+                          icon={Share2}
+                          label={`Share | ${formatCompactNumber(capOfTheDay.shares)}`}
+                          onClick={() => void handleShare(capOfTheDay.resultId)}
+                          inverse
+                        />
+                        <ActionButton
+                          icon={ExternalLink}
+                          label="Open Investigation"
+                          onClick={() => handleTrendOpen(capOfTheDay.resultId)}
+                        />
+                      </div>
+                    </div>
+                  </section>
+                ) : (
+                  <EmptyPanel title="No saved Top Caps yet" description="Save a result from the verdict screen to populate the leaderboard." />
+                )}
+
+                <section className="space-y-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <h2 className="flex items-center gap-3 font-headline text-2xl font-black uppercase tracking-[-0.04em]">
+                      <Camera className="text-primary" />
+                      Caught in 4K
+                    </h2>
+
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <div ref={categoryMenuRef} className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setIsCategoryDropdownOpen((previous) => !previous)}
+                          className="inline-flex w-full items-center justify-between gap-3 rounded-full border border-white/10 bg-surface px-4 py-3 font-label text-xs uppercase tracking-[0.22em] text-white transition hover:border-primary/50 sm:min-w-[15rem]"
+                        >
+                          <span>{topCapsFilterCategory === 'All' ? 'All Categories' : topCapsFilterCategory}</span>
+                          <ChevronDown size={16} className={cn('transition', isCategoryDropdownOpen && 'rotate-180')} />
+                        </button>
+
+                        <AnimatePresence>
+                          {isCategoryDropdownOpen && (
+                            <motion.div
+                              initial={{opacity: 0, y: 8}}
+                              animate={{opacity: 1, y: 0}}
+                              exit={{opacity: 0, y: 8}}
+                              className="absolute right-0 z-40 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-surface-high shadow-2xl"
+                            >
+                              {TOP_CAP_CATEGORIES.map((category) => (
+                                <div
+                                  key={category}
+                                  className={cn(
+                                    'flex items-center justify-between gap-3 px-4 py-3',
+                                    topCapsFilterCategory === category ? 'bg-white/5' : '',
+                                  )}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setTopCapsFilterCategory(category);
+                                      setIsCategoryDropdownOpen(false);
+                                    }}
+                                    className="text-left font-label text-xs uppercase tracking-[0.22em] text-white"
+                                  >
+                                    {category === 'All' ? 'All Categories' : category}
+                                  </button>
+                                  {category !== 'All' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleFollowCategory(category)}
+                                      className="rounded-full p-2 transition hover:bg-white/10"
+                                      title={followedCategories.includes(category) ? 'Unfollow category' : 'Follow category'}
+                                    >
+                                      {followedCategories.includes(category) ? (
+                                        <BellRing size={14} className="text-primary" />
+                                      ) : (
+                                        <Bell size={14} className="text-outline" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      <div ref={sortMenuRef} className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setIsSortDropdownOpen((previous) => !previous)}
+                          className="inline-flex w-full items-center justify-between gap-3 rounded-full border border-white/10 bg-surface px-4 py-3 font-label text-xs uppercase tracking-[0.22em] text-white transition hover:border-primary/50 sm:min-w-[14rem]"
+                        >
+                          <span>Sort by {topCapsSortBy}</span>
+                          <ChevronDown size={16} className={cn('transition', isSortDropdownOpen && 'rotate-180')} />
+                        </button>
+
+                        <AnimatePresence>
+                          {isSortDropdownOpen && (
+                            <motion.div
+                              initial={{opacity: 0, y: 8}}
+                              animate={{opacity: 1, y: 0}}
+                              exit={{opacity: 0, y: 8}}
+                              className="absolute right-0 z-40 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-surface-high shadow-2xl"
+                            >
+                              {TOP_CAP_SORT_OPTIONS.map((option) => (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  onClick={() => {
+                                    setTopCapsSortBy(option);
+                                    setIsSortDropdownOpen(false);
+                                  }}
+                                  className={cn(
+                                    'block w-full px-4 py-3 text-left font-label text-xs uppercase tracking-[0.22em] transition hover:bg-white/5',
+                                    topCapsSortBy === option ? 'bg-white/5 text-primary' : 'text-white',
+                                  )}
+                                >
+                                  Sort by {option}
+                                </button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      {(topCapsFilterCategory !== 'All' || topCapsSortBy !== 'Shares') && (
+                        <button
+                          type="button"
+                          onClick={resetFilters}
+                          className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-surface-high px-4 py-3 font-label text-xs uppercase tracking-[0.22em] text-white transition hover:border-primary/50"
+                        >
+                          <RefreshCw size={14} />
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {filteredTopCaps.length > 0 ? (
+                      filteredTopCaps.map((entry, index) => {
+                        const result = investigations.find((item) => item.id === entry.resultId);
+                        const isExpanded = expandedCards.includes(entry.resultId);
+                        return (
+                          <div key={entry.resultId} className="rounded-[1.75rem] border border-white/5 bg-surface p-5 transition hover:border-white/15">
+                            <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+                              <button
+                                type="button"
+                                onClick={() => handleTrendOpen(entry.resultId)}
+                                className="flex flex-1 gap-4 text-left"
+                              >
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-surface-high font-headline text-2xl font-black text-primary">
+                                  #{index + 1}
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Pill>{entry.category}</Pill>
+                                    <Pill>{entry.verdict}</Pill>
+                                    <Pill>{formatRelativeTime(entry.addedAt)}</Pill>
+                                  </div>
+                                  <h3 className="font-headline text-xl font-black uppercase tracking-[-0.04em]">{entry.claim}</h3>
+                                  <p className="text-outline">{entry.summary}</p>
+                                </div>
+                              </button>
+
+                              <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
+                                <ActionButton icon={Flame} label={formatCompactNumber(entry.laughedAt)} onClick={() => handleLaugh(entry.resultId)} compact />
+                                <ActionButton icon={Share2} label={formatCompactNumber(entry.shares)} onClick={() => void handleShare(entry.resultId)} compact />
+                                <ActionButton icon={ExternalLink} label="Open" onClick={() => handleTrendOpen(entry.resultId)} compact />
+                                <ActionButton
+                                  icon={isExpanded ? ChevronUp : ChevronDown}
+                                  label={isExpanded ? 'Hide' : 'Details'}
+                                  onClick={() => toggleExpand(entry.resultId)}
+                                  compact
+                                  inverse
+                                />
+                              </div>
+                            </div>
+
+                            <AnimatePresence>
+                              {isExpanded && result && (
+                                <motion.div
+                                  initial={{height: 0, opacity: 0}}
+                                  animate={{height: 'auto', opacity: 1}}
+                                  exit={{height: 0, opacity: 0}}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="mt-5 border-t border-white/10 pt-5">
+                                    <div className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
+                                      <div className="space-y-4">
+                                        <h4 className="font-label text-xs uppercase tracking-[0.3em] text-primary">Why it landed here</h4>
+                                        {result.discrepancies.map((item, discrepancyIndex) => (
+                                          <div key={`${item.title}-${discrepancyIndex}`} className="rounded-2xl bg-surface-high px-4 py-4">
+                                            <p className="font-headline text-sm font-bold uppercase tracking-[0.1em]">{item.title}</p>
+                                            <p className="mt-2 text-sm leading-6 text-outline">{item.text}</p>
+                                          </div>
+                                        ))}
+                                      </div>
+
+                                      <div className="space-y-4">
+                                        <h4 className="font-label text-xs uppercase tracking-[0.3em] text-outline">Sources</h4>
+                                        {result.sources.length > 0 ? (
+                                          result.sources.map((source) => (
+                                            <a
+                                              key={source.url}
+                                              href={source.url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="flex items-start justify-between gap-4 rounded-2xl bg-surface-high px-4 py-4 transition hover:bg-background"
+                                            >
+                                              <div>
+                                                <p className="font-headline text-sm font-bold uppercase tracking-[0.08em]">{source.name}</p>
+                                                <p className="mt-1 break-all text-xs text-outline">{source.url}</p>
+                                              </div>
+                                              <ExternalLink size={14} className="mt-1 shrink-0 text-outline" />
+                                            </a>
+                                          ))
+                                        ) : (
+                                          <p className="text-sm text-outline">No structured source list is stored for this entry.</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <EmptyPanel title="No Top Caps match the current filter" description="Try another category or reset the current sort and filter settings." />
+                    )}
+                  </div>
+                </section>
+              </motion.section>
+            )}
+
+            {screen === 'history' && (
+              <motion.section
+                key="history"
+                initial={{opacity: 0, y: 18}}
+                animate={{opacity: 1, y: 0}}
+                exit={{opacity: 0, y: -18}}
+                className="space-y-6"
+              >
+                <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="font-label text-xs uppercase tracking-[0.3em] text-primary">History</p>
+                    <h1 className="mt-2 font-headline text-[clamp(2.3rem,10vw,5.4rem)] font-black uppercase tracking-[-0.06em]">Past checks</h1>
+                    <p className="mt-3 max-w-2xl text-outline">Every completed investigation is stored locally and can be reopened or removed.</p>
+                  </div>
+                  {history.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setHistory([])}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-3 font-label text-xs uppercase tracking-[0.22em] text-white transition hover:border-primary/50"
+                    >
+                      <Trash2 size={14} />
+                      Clear history
+                    </button>
+                  )}
+                </header>
+
+                <div className="space-y-4">
+                  {history.length > 0 ? (
+                    history.map((entry) => (
+                      <div key={entry.id} className="rounded-[1.5rem] border border-white/5 bg-surface p-5">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Pill>{entry.verdict}</Pill>
+                              <Pill>{entry.category}</Pill>
+                              <Pill>{entry.mode === 'live' ? 'Live' : 'Fallback'}</Pill>
+                              <Pill>{formatRelativeTime(entry.checkedAt)}</Pill>
+                            </div>
+                            <h2 className="font-headline text-xl font-black uppercase tracking-[-0.04em]">{entry.label}</h2>
+                            <p className="text-outline">{formatDateTime(entry.checkedAt)}</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
+                            <ActionButton icon={ExternalLink} label="Open" onClick={() => handleTrendOpen(entry.resultId)} compact />
+                            <ActionButton icon={Trash2} label="Remove" onClick={() => removeHistoryEntry(entry.id)} compact inverse />
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <EmptyPanel title="History is empty" description="Run a check from the home screen and it will appear here." />
+                  )}
+                </div>
+              </motion.section>
+            )}
+
+            {screen === 'notifications' && (
+              <motion.section
+                key="notifications"
+                initial={{opacity: 0, y: 18}}
+                animate={{opacity: 1, y: 0}}
+                exit={{opacity: 0, y: -18}}
+                className="space-y-6"
+              >
+                <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="font-label text-xs uppercase tracking-[0.3em] text-primary">Alerts</p>
+                    <h1 className="mt-2 font-headline text-[clamp(2.3rem,10vw,5.4rem)] font-black uppercase tracking-[-0.06em]">Activity feed</h1>
+                    <p className="mt-3 max-w-2xl text-outline">Followed categories, sharing actions, saved claims, and completed investigations appear here.</p>
+                  </div>
+                  {notifications.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={markAllNotificationsRead}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-3 font-label text-xs uppercase tracking-[0.22em] text-white transition hover:border-primary/50"
+                    >
+                      <Check size={14} />
+                      Mark all read
+                    </button>
+                  )}
+                </header>
+
+                <div className="space-y-4">
+                  {notifications.length > 0 ? (
+                    notifications.map((notification) => (
+                      <button
+                        key={notification.id}
+                        type="button"
+                        onClick={() => openNotification(notification)}
+                        className={cn(
+                          'flex w-full flex-col gap-4 rounded-[1.5rem] border p-5 text-left transition hover:border-white/15',
+                          notification.isRead ? 'border-white/5 bg-surface' : 'border-primary/20 bg-surface-high',
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Pill>{notification.type}</Pill>
+                              <Pill>{formatRelativeTime(notification.createdAt)}</Pill>
+                              {notification.category && <Pill>{notification.category}</Pill>}
+                            </div>
+                            <h2 className="font-headline text-xl font-black uppercase tracking-[-0.04em]">{notification.title}</h2>
+                          </div>
+                          {!notification.isRead && <BellRing size={18} className="text-primary" />}
+                        </div>
+                        <p className="text-outline">{notification.message}</p>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              removeNotification(notification.id);
+                            }}
+                            className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 font-label text-[11px] uppercase tracking-[0.2em] text-outline transition hover:text-white"
+                          >
+                            <Trash2 size={12} />
+                            Remove
+                          </button>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <EmptyPanel title="No alerts yet" description="New analyses, follows, shares, and saves will populate this feed." />
+                  )}
+                </div>
+              </motion.section>
+            )}
+
+            {screen === 'profile' && (
+              <motion.section
+                key="profile"
+                initial={{opacity: 0, y: 18}}
+                animate={{opacity: 1, y: 0}}
+                exit={{opacity: 0, y: -18}}
+                className="space-y-8"
+              >
+                <header className="space-y-4 text-center">
+                  <p className="font-label text-xs uppercase tracking-[0.3em] text-primary">Profile</p>
+                  <h1 className="font-headline text-[clamp(2.3rem,10vw,5.4rem)] font-black uppercase tracking-[-0.06em]">Local settings</h1>
+                  <p className="mx-auto max-w-2xl text-outline">
+                    These preferences are stored on this device only. They control the app behavior directly, including motion, alerts, and share flow.
+                  </p>
+                </header>
+
+                <div className="grid gap-6 lg:grid-cols-[0.78fr_1.22fr]">
+                  <div className="rounded-[2rem] border border-white/5 bg-surface p-6 text-center">
+                    <div className="mx-auto h-28 w-28 overflow-hidden rounded-full border-4 border-surface-high bg-surface-high">
+                      <img
+                        alt="Profile"
+                        src={`https://picsum.photos/seed/${profile.avatarSeed}/240/240`}
+                        referrerPolicy="no-referrer"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <h2 className="mt-5 font-headline text-2xl font-black uppercase tracking-[-0.04em]">{profile.displayName}</h2>
+                    <div className="mt-6 grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                      <StatCard label="Checks saved" value={`${history.length}`} helper="History entries" />
+                      <StatCard label="Top Caps" value={`${topCaps.length}`} helper="Saved leaderboard items" />
+                      <StatCard label="Following" value={`${followedCategories.length}`} helper="Tracked categories" />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[2rem] border border-white/5 bg-surface p-6">
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <FormField label="Display name">
+                        <input
+                          value={profile.displayName}
+                          onChange={(event) => handleProfileChange('displayName', event.target.value)}
+                          className="w-full rounded-2xl border border-white/10 bg-background px-4 py-3 text-white outline-none transition focus:border-primary/50"
+                          type="text"
+                        />
+                      </FormField>
+                      <FormField label="Avatar seed">
+                        <input
+                          value={profile.avatarSeed}
+                          onChange={(event) => handleProfileChange('avatarSeed', event.target.value)}
+                          className="w-full rounded-2xl border border-white/10 bg-background px-4 py-3 text-white outline-none transition focus:border-primary/50"
+                          type="text"
+                        />
+                      </FormField>
+                    </div>
+
+                    <div className="mt-6 space-y-4">
+                      <ToggleRow
+                        title="Enable alerts"
+                        description="Controls whether follow/share/save activity creates alert feed items."
+                        checked={profile.enableAlerts}
+                        onChange={(value) => handleProfileChange('enableAlerts', value)}
+                      />
+                      <ToggleRow
+                        title="Prefer native share"
+                        description="Use the device share sheet first, then fall back to clipboard and the share card modal."
+                        checked={profile.preferNativeShare}
+                        onChange={(value) => handleProfileChange('preferNativeShare', value)}
+                      />
+                      <ToggleRow
+                        title="Reduce motion"
+                        description="Disables most animated motion in the interface."
+                        checked={profile.reduceMotion}
+                        onChange={(value) => handleProfileChange('reduceMotion', value)}
+                      />
+                    </div>
+
+                    <div className="mt-8 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={clearUserData}
+                        className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-5 py-3 font-label text-xs uppercase tracking-[0.24em] text-primary transition hover:bg-primary/20"
+                      >
+                        <Trash2 size={14} />
+                        Reset local data
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </motion.section>
+            )}
+
+            {screen === 'trends' && (
+              <motion.section
+                key="trends"
+                initial={{opacity: 0, y: 18}}
+                animate={{opacity: 1, y: 0}}
+                exit={{opacity: 0, y: -18}}
+                className="space-y-6"
+              >
+                <header className="space-y-4 text-center">
+                  <p className="font-label text-xs uppercase tracking-[0.3em] text-primary">Global pulse</p>
+                  <h1 className="font-headline text-[clamp(2.35rem,10vw,5.8rem)] font-black uppercase tracking-[-0.06em]">All trends</h1>
+                  <p className="mx-auto max-w-3xl text-outline">
+                    Every card opens a stored investigation. The verdict badge, timestamps, and source counts come from the active data model.
+                  </p>
+                </header>
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {trendResults.map((result) => (
+                    <TrendCard
+                      key={result.id}
+                      type={result.verdict}
+                      category={result.category}
+                      time={formatRelativeTime(result.analyzedAt)}
+                      claim={result.title}
+                      stats={`${result.mode === 'live' ? 'Live' : 'Fallback'} | ${result.sourceCount} source${result.sourceCount === 1 ? '' : 's'}`}
+                      onClick={() => handleTrendOpen(result.id)}
+                      onBadgeClick={() => setScreen('top')}
+                    />
+                  ))}
+                </div>
+              </motion.section>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {shareCardResult && (
+              <motion.div
+                initial={{opacity: 0}}
+                animate={{opacity: 1}}
+                exit={{opacity: 0}}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-lg"
+                onClick={() => setShareCardResultId(null)}
+              >
+                <motion.div
+                  ref={shareCardRef}
+                  initial={{scale: 0.96, y: 24}}
+                  animate={{scale: 1, y: 0}}
+                  exit={{scale: 0.96, y: 24}}
+                  onClick={(event) => event.stopPropagation()}
+                  className="relative flex aspect-[4/5] w-full max-w-sm flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#0A0A0A]"
+                >
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,59,48,0.25),_transparent_45%)]" />
+                  <div className="absolute left-0 top-0 h-2 w-full bg-primary" />
+
+                  <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-8 text-center">
+                    <span className="rounded-full border border-white/10 bg-surface-high px-4 py-2 font-label text-[11px] uppercase tracking-[0.24em] text-outline">
+                      {shareCardResult.mode === 'live' ? 'Live grounded result' : 'Fallback result'}
+                    </span>
+                    <h2 className="mt-6 font-headline text-[96px] font-black uppercase leading-none tracking-[-0.08em] text-primary sm:text-[118px]">
+                      {shareCardResult.verdict}
+                    </h2>
+                    <p className="mt-6 text-xl font-bold leading-tight text-white">{shareCardResult.summary}</p>
+                  </div>
+
+                  <div className="relative z-10 border-t border-white/5 bg-black/30 px-6 py-5 text-center">
+                    <p className="font-label text-[10px] uppercase tracking-[0.24em] text-outline">
+                      {shareCardResult.confidence}% confidence | {shareCardResult.category} | CAP CORE
+                    </p>
+                  </div>
+                </motion.div>
+
+                <button
+                  type="button"
+                  onClick={() => setShareCardResultId(null)}
+                  className="absolute right-4 top-4 rounded-full bg-black/50 p-2 text-white/70 transition hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+
+                <div className="absolute bottom-8 left-0 flex w-full justify-center px-4">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDownloadImage();
+                    }}
+                    disabled={isDownloading}
+                    className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 font-headline text-sm font-black uppercase tracking-[0.2em] text-black transition hover:bg-primary-dim disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isDownloading ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+                    {isDownloading ? 'Saving' : 'Save as Image'}
+                  </button>
+                </div>
+              </motion.div>
             )}
           </AnimatePresence>
         </main>
