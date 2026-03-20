@@ -17,25 +17,18 @@
 }
 
 @layer base {
-  html, body, #root {
-    min-height: 100%;
-  }
-
   body {
     @apply bg-background text-white font-body antialiased;
-    min-height: 100vh;
-    overflow-x: hidden;
   }
+}
 
-  button, input {
-    font: inherit;
-  }
+.mic-orb-glow {
+  background: radial-gradient(circle, rgba(255,59,48,0.15) 0%, rgba(211,47,47,0.05) 50%, transparent 100%);
 }
 
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
-
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
