@@ -6,7 +6,7 @@ export function Header({ activeTab, onNavigate }: { activeTab: string, onNavigat
   return (
     <header className="fixed top-0 w-full flex justify-between items-center px-6 py-4 bg-background/80 backdrop-blur-xl z-50 border-b border-white/5">
       <div className="flex items-center gap-2 cursor-pointer" onClick={() => onNavigate('home')}>
-        <span className="text-2xl font-black text-white italic font-headline tracking-tighter uppercase">CAP CORE</span>
+        <span className="text-2xl font-black text-white italic font-headline tracking-tighter uppercase">CAP</span>
       </div>
       <nav className="hidden md:flex items-center gap-8 font-headline font-black uppercase tracking-tighter text-sm">
         <button onClick={() => onNavigate('home')} className={cn("transition-colors", activeTab === 'home' ? "text-primary" : "text-white hover:text-primary")}>Home</button>
@@ -18,9 +18,9 @@ export function Header({ activeTab, onNavigate }: { activeTab: string, onNavigat
           <Bell size={20} />
         </button>
         <button onClick={() => onNavigate('profile')} className={cn("w-10 h-10 rounded-full overflow-hidden border-2 transition-colors", activeTab === 'profile' ? "border-primary" : "border-surface-high hover:border-primary bg-surface")}>
-          <img 
-            alt="Profile" 
-            src="https://picsum.photos/seed/avatar/100/100" 
+          <img
+            alt="Profile"
+            src="https://picsum.photos/seed/avatar/100/100"
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover"
           />
@@ -48,8 +48,8 @@ export function MobileNav({ activeTab, onNavigate }: { activeTab: string, onNavi
             onClick={() => onNavigate(tab.id)}
             className={cn(
               "flex flex-col items-center justify-center px-6 py-2 transition-all",
-              isActive 
-                ? "bg-surface-high text-primary rounded-full shadow-[0_0_15px_rgba(255,142,128,0.3)]" 
+              isActive
+                ? "bg-surface-high text-primary rounded-full shadow-[0_0_15px_rgba(255,142,128,0.3)]"
                 : "text-outline hover:text-white"
             )}
           >
