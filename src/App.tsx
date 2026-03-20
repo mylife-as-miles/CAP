@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, X, Check, ExternalLink, Share2, Star, RefreshCw, Info, Flag, Flame, Camera, Filter, ArrowUpDown, ChevronDown, ChevronUp, Bell, BellRing } from 'lucide-react';
+import { Search, X, Check, ExternalLink, Share2, Star, RefreshCw, Info, Flag, Flame, Camera, Filter, ArrowUpDown, ChevronDown, ChevronUp, Bell, BellRing, Download } from 'lucide-react';
+import { toPng } from 'html-to-image';
 import { Header, MobileNav } from '@/src/components/Navigation';
 import { MicOrb } from '@/src/components/MicOrb';
 import { TrendCard } from '@/src/components/TrendCard';
@@ -16,6 +17,8 @@ export default function App() {
   const [isAddedToTopCaps, setIsAddedToTopCaps] = useState(false);
   const [isFlagged, setIsFlagged] = useState(false);
   const [showShareCard, setShowShareCard] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const shareCardRef = useRef<HTMLDivElement>(null);
 
   const [topCapsSortBy, setTopCapsSortBy] = useState<'Shares' | 'Laughed At' | 'Date Added'>('Shares');
   const [topCapsFilterCategory, setTopCapsFilterCategory] = useState<string>('All');
@@ -187,6 +190,26 @@ export default function App() {
 
   const handleShare = () => {
     setShowShareCard(true);
+  };
+
+  const handleDownloadImage = async () => {
+    if (!shareCardRef.current) return;
+    try {
+      setIsDownloading(true);
+      const dataUrl = await toPng(shareCardRef.current, { 
+        cacheBust: true, 
+        pixelRatio: 2,
+        backgroundColor: '#0A0A0A'
+      });
+      const link = document.createElement('a');
+      link.download = 'cap-card.png';
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error('Failed to generate image', err);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handleAddToTopCaps = () => {
@@ -1126,6 +1149,7 @@ export default function App() {
               onClick={() => setShowShareCard(false)}
             >
               <motion.div 
+                ref={shareCardRef}
                 initial={{ scale: 0.95, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.95, y: 20 }}
@@ -1157,20 +1181,32 @@ export default function App() {
                     Checked with Firecrawl. Spoken by Cap on 11Labs.
                   </p>
                 </div>
-                
-                {/* Close button - hidden in screenshots usually, but good for UX */}
-                <button 
-                  onClick={() => setShowShareCard(false)}
-                  className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white/50 hover:text-white transition-colors z-20"
-                >
-                  <X size={16} />
-                </button>
               </motion.div>
               
-              <div className="absolute bottom-8 left-0 w-full text-center pointer-events-none">
-                <p className="font-label text-xs uppercase tracking-widest text-outline">
-                  Screenshot to share
-                </p>
+              {/* Close button - hidden in screenshots usually, but good for UX */}
+              <button 
+                onClick={() => setShowShareCard(false)}
+                className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white/50 hover:text-white transition-colors z-20"
+              >
+                <X size={16} />
+              </button>
+
+              <div className="absolute bottom-8 left-0 w-full flex justify-center pointer-events-auto">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDownloadImage();
+                  }}
+                  disabled={isDownloading}
+                  className="flex items-center gap-2 bg-primary text-white px-6 py-3 rounded-full font-headline font-black uppercase tracking-widest text-sm hover:bg-primary/90 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isDownloading ? (
+                    <RefreshCw size={16} className="animate-spin" />
+                  ) : (
+                    <Download size={16} />
+                  )}
+                  {isDownloading ? 'Saving...' : 'Save as Image'}
+                </button>
               </div>
             </motion.div>
           )}
