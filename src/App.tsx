@@ -117,7 +117,7 @@ export default function App() {
         .select('*, claim_metrics(*)')
         .eq('is_featured', true)
         .eq('status', 'published')
-        .maybeSingle();
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
       if (featuredError) throw featuredError;
       if (featuredData) setFeaturedCap(featuredData as any);

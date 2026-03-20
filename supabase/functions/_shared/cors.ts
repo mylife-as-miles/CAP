@@ -23,6 +23,12 @@ export function resolveCorsOrigin(origin: string | null) {
   }
 
   const allowedOrigins = getAllowedOrigins();
+
+  // Support wildcard '*' to allow any origin (echoes back the incoming origin)
+  if (allowedOrigins.has('*')) {
+    return origin;
+  }
+
   return allowedOrigins.has(origin) ? origin : null;
 }
 
