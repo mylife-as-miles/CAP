@@ -42,7 +42,7 @@
   - Text normalization: `elevenlabs`
   - Start with a general-purpose model that handles tool calling reliably, such as GPT-4o
   - Add localhost and production domain allowlists before enabling the agent publicly
-- Tool input schema:
+- Tool input schema (refer to your dashboard's JSON Mode for validated internal structure):
 ```json
 {
   "type": "object",
