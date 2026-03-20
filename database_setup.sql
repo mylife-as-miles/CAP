@@ -4,12 +4,12 @@ CREATE TABLE IF NOT EXISTS public.claims (
     title TEXT NOT NULL,
     claim_text TEXT NOT NULL,
     source_url TEXT,
-    category TEXT DEFAULT 'Uncategorized', -- Required for UI filters
+    category TEXT DEFAULT 'Uncategorized',
     verdict TEXT NOT NULL CHECK (verdict IN ('CAP', 'NO CAP', 'HALF CAP')),
     confidence INTEGER DEFAULT 0 CHECK (confidence >= 0 AND confidence <= 100),
-    reason_summary TEXT, -- Short reason for tooltip/preview
-    details TEXT, -- Full detailed explanation
-    sources JSONB DEFAULT '[]'::jsonb, -- Supporting evidence
+    reason_summary TEXT,
+    details TEXT,
+    sources JSONB DEFAULT '[]'::jsonb,
     is_featured BOOLEAN DEFAULT FALSE,
     status TEXT DEFAULT 'published' CHECK (status IN ('draft', 'published', 'archived')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -25,9 +25,22 @@ CREATE TABLE IF NOT EXISTS public.claim_metrics (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Create claim_interactions for anti-spam and deduplication
+CREATE TABLE IF NOT EXISTS public.claim_interactions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    claim_id UUID REFERENCES public.claims(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL,
+    interaction_type TEXT NOT NULL CHECK (interaction_type IN ('laugh', 'share', 'view')),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add indexes for fast lookup during deduplication
+CREATE INDEX IF NOT EXISTS idx_interactions_lookup ON public.claim_interactions (claim_id, session_id, interaction_type);
+
 -- Enable Row Level Security
 ALTER TABLE public.claims ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.claim_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.claim_interactions ENABLE ROW LEVEL SECURITY;
 
 -- Set up RLS Policies
 -- Allow public read access to published claims
@@ -48,27 +61,101 @@ USING (
     )
 );
 
--- RPC for incrementing laugh_count securely
-CREATE OR REPLACE FUNCTION public.increment_laugh_count(target_claim_id UUID)
-RETURNS void AS $$
+-- Deny direct client writes to interactions (only allowed via RPC)
+DROP POLICY IF EXISTS "Allow public interaction entry" ON public.claim_interactions;
+
+-- RPC for incrementing laugh_count with anti-spam
+CREATE OR REPLACE FUNCTION public.increment_laugh_count(target_claim_id UUID, user_session_id TEXT)
+RETURNS TEXT AS $$
+DECLARE
+    counted BOOLEAN;
 BEGIN
-    INSERT INTO public.claim_metrics (claim_id, laugh_count)
-    VALUES (target_claim_id, 1)
-    ON CONFLICT (claim_id) DO UPDATE
-    SET laugh_count = public.claim_metrics.laugh_count + 1,
-        updated_at = NOW();
+    -- Check if already laughed
+    SELECT EXISTS (
+        SELECT 1 FROM public.claim_interactions 
+        WHERE claim_id = target_claim_id 
+        AND session_id = user_session_id 
+        AND interaction_type = 'laugh'
+    ) INTO counted;
+
+    IF counted THEN
+        RETURN 'already_counted';
+    END IF;
+
+    -- Record interaction
+    INSERT INTO public.claim_interactions (claim_id, session_id, interaction_type)
+    VALUES (target_claim_id, user_session_id, 'laugh');
+
+    -- Increment metric
+    UPDATE public.claim_metrics 
+    SET laugh_count = laugh_count + 1,
+        updated_at = NOW()
+    WHERE claim_id = target_claim_id;
+
+    RETURN 'counted';
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- RPC for incrementing share_count securely
-CREATE OR REPLACE FUNCTION public.increment_share_count(target_claim_id UUID)
-RETURNS void AS $$
+-- RPC for incrementing share_count with rate-limit logic
+CREATE OR REPLACE FUNCTION public.increment_share_count(target_claim_id UUID, user_session_id TEXT)
+RETURNS TEXT AS $$
+DECLARE
+    last_share TIMESTAMPTZ;
 BEGIN
-    INSERT INTO public.claim_metrics (claim_id, share_count)
-    VALUES (target_claim_id, 1)
-    ON CONFLICT (claim_id) DO UPDATE
-    SET share_count = public.claim_metrics.share_count + 1,
-        updated_at = NOW();
+    -- Allow multiple shares but rate-limit to once per minute per session
+    SELECT created_at FROM public.claim_interactions 
+    WHERE claim_id = target_claim_id 
+    AND session_id = user_session_id 
+    AND interaction_type = 'share'
+    ORDER BY created_at DESC 
+    LIMIT 1 INTO last_share;
+
+    IF last_share IS NOT NULL AND (NOW() - last_share) < INTERVAL '1 minute' THEN
+        RETURN 'rate_limited';
+    END IF;
+
+    -- Record interaction
+    INSERT INTO public.claim_interactions (claim_id, session_id, interaction_type)
+    VALUES (target_claim_id, user_session_id, 'share');
+
+    -- Increment metric
+    UPDATE public.claim_metrics 
+    SET share_count = share_count + 1,
+        updated_at = NOW()
+    WHERE claim_id = target_claim_id;
+
+    RETURN 'counted';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RPC for incrementing view_count (coarse deduplication - once per 10 mins)
+CREATE OR REPLACE FUNCTION public.increment_view_count(target_claim_id UUID, user_session_id TEXT)
+RETURNS TEXT AS $$
+DECLARE
+    last_view TIMESTAMPTZ;
+BEGIN
+    SELECT created_at FROM public.claim_interactions 
+    WHERE claim_id = target_claim_id 
+    AND session_id = user_session_id 
+    AND interaction_type = 'view'
+    ORDER BY created_at DESC 
+    LIMIT 1 INTO last_view;
+
+    IF last_view IS NOT NULL AND (NOW() - last_view) < INTERVAL '10 minutes' THEN
+        RETURN 'already_counted';
+    END IF;
+
+    -- Record interaction
+    INSERT INTO public.claim_interactions (claim_id, session_id, interaction_type)
+    VALUES (target_claim_id, user_session_id, 'view');
+
+    -- Increment metric
+    UPDATE public.claim_metrics 
+    SET view_count = view_count + 1,
+        updated_at = NOW()
+    WHERE claim_id = target_claim_id;
+
+    RETURN 'counted';
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -110,18 +197,6 @@ VALUES
   'Excessive salt intake causes dehydration and hypernatremia.',
   'Medical professionals warn that consuming excessive salt water can lead to severe dehydration and dangerous electrolyte imbalances.',
   '[{"name": "WHO", "url": "https://who.int", "text": "Excessive sodium is linked to adverse health outcomes."}]'::jsonb,
-  FALSE, 
-  'published'
-),
-(
-  'Market Rally', 
-  'New tech stocks hit an all-time high today amid AI growth reports.', 
-  'Economics', 
-  'NO CAP', 
-  85, 
-  'Verified by exchange data and quarterly reports.',
-  'The surge in tech stock evaluations is substantiated by latest market data and several high-profile AI integration successes.',
-  '[{"name": "Nasdaq", "url": "https://nasdaq.com", "text": "Tech index reached record levels this session."}]'::jsonb,
   FALSE, 
   'published'
 );

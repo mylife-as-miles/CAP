@@ -8,6 +8,7 @@ import { MicOrb } from '@/src/components/MicOrb';
 import { TrendCard } from '@/src/components/TrendCard';
 import { supabase } from '@/src/lib/supabase';
 import { cn } from '@/src/lib/utils';
+import { getOrCreateAnonymousSessionId } from '@/src/lib/session';
 
 type Screen = 'home' | 'listening' | 'checking' | 'results' | 'top' | 'history' | 'profile' | 'notifications' | 'trends';
 type ClaimTarget = 'featured' | string;
@@ -135,50 +136,102 @@ export default function App() {
 
   const openClaimShareCard = async (target: ClaimTarget) => {
     setIsShared(false);
+    const sessionId = getOrCreateAnonymousSessionId();
 
     // Optimistic Update
     if (target === 'featured' && featuredCap) {
+      const prevFeatured = { ...featuredCap };
       setFeaturedCap({
         ...featuredCap,
         claim_metrics: { ...featuredCap.claim_metrics, share_count: featuredCap.claim_metrics.share_count + 1 }
       });
       setShareCardData(buildClaimShareCard(featuredCap));
-      await supabase.rpc('increment_share_count', { target_claim_id: featuredCap.id });
+
+      const { data, error } = await supabase.rpc('increment_share_count', {
+        target_claim_id: featuredCap.id,
+        user_session_id: sessionId
+      });
+
+      if (error || data === 'rate_limited') {
+        setFeaturedCap(prevFeatured);
+        if (data === 'rate_limited') showToast("Take a breath! You're sharing too fast.");
+      }
       return;
     }
 
     const currentClaim = topCapsData.find((item) => item.id === target);
     if (!currentClaim) return;
 
+    const prevData = [...topCapsData];
     setTopCapsData(prev => prev.map(item => item.id === target ? {
       ...item,
       claim_metrics: { ...item.claim_metrics, share_count: item.claim_metrics.share_count + 1 }
     } : item));
 
     setShareCardData(buildClaimShareCard(currentClaim));
-    await supabase.rpc('increment_share_count', { target_claim_id: target });
+
+    const { data, error } = await supabase.rpc('increment_share_count', {
+      target_claim_id: target,
+      user_session_id: sessionId
+    });
+
+    if (error || data === 'rate_limited') {
+      setTopCapsData(prevData);
+      if (data === 'rate_limited') showToast("Take a breath! You're sharing too fast.");
+    }
   };
 
   const handleLaugh = async (e: React.MouseEvent, target: ClaimTarget) => {
     e.stopPropagation();
     triggerLaughCelebration(target);
+    const sessionId = getOrCreateAnonymousSessionId();
 
     // Optimistic Update
     if (target === 'featured' && featuredCap) {
+      const prevFeatured = { ...featuredCap };
       setFeaturedCap({
         ...featuredCap,
         claim_metrics: { ...featuredCap.claim_metrics, laugh_count: featuredCap.claim_metrics.laugh_count + 1 }
       });
-      await supabase.rpc('increment_laugh_count', { target_claim_id: featuredCap.id });
+
+      const { data, error } = await supabase.rpc('increment_laugh_count', {
+        target_claim_id: featuredCap.id,
+        user_session_id: sessionId
+      });
+
+      if (error || data === 'already_counted') {
+        if (data === 'already_counted') {
+          // Keep the visual vibe but don't increment the number if they already laughed
+          setFeaturedCap(prevFeatured);
+        } else {
+          setFeaturedCap(prevFeatured);
+        }
+      }
       return;
     }
 
+    const prevData = [...topCapsData];
     setTopCapsData(prev => prev.map(item => item.id === target ? {
       ...item,
       claim_metrics: { ...item.claim_metrics, laugh_count: item.claim_metrics.laugh_count + 1 }
     } : item));
 
-    await supabase.rpc('increment_laugh_count', { target_claim_id: target });
+    const { data, error } = await supabase.rpc('increment_laugh_count', {
+      target_claim_id: target,
+      user_session_id: sessionId
+    });
+
+    if (error || data === 'already_counted') {
+      setTopCapsData(prevData);
+    }
+  };
+
+  const handleViewClaim = async (claimId: string) => {
+    const sessionId = getOrCreateAnonymousSessionId();
+    await supabase.rpc('increment_view_count', {
+      target_claim_id: claimId,
+      user_session_id: sessionId
+    });
   };
 
   const toggleExpand = (id: string) => {
@@ -488,8 +541,15 @@ export default function App() {
                         time={new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ago'}
                         claim={item.claim_text}
                         stats={`${formatNumber(item.claim_metrics.view_count)} views`}
-                        onClick={() => setScreen('results')}
-                        onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
+                        onClick={() => {
+                          handleViewClaim(item.id);
+                          setScreen('results');
+                        }}
+                        onBadgeClick={(e) => {
+                          e.stopPropagation();
+                          handleViewClaim(item.id);
+                          setScreen('top');
+                        }}
                       />
                     ))
                   ) : (
@@ -1064,7 +1124,10 @@ export default function App() {
                     filteredAndSortedTopCaps.map((item, index) => (
                       <div
                         key={item.id}
-                        onClick={() => toggleExpand(item.id)}
+                        onClick={() => {
+                          handleViewClaim(item.id);
+                          toggleExpand(item.id);
+                        }}
                         className="bg-surface border border-white/5 rounded-2xl p-6 flex flex-col hover:border-white/20 transition-colors group cursor-pointer relative overflow-hidden"
                       >
                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/0 group-hover:bg-primary transition-colors" />
