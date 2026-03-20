@@ -358,7 +358,7 @@ export default function App() {
                     onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                   />
                   <TrendCard
-                    type="FACTS"
+                    type="NO CAP"
                     category="Economics"
                     time="5h ago"
                     claim="New housing starts in the metro area hit a 10-year high this June."
@@ -366,7 +366,7 @@ export default function App() {
                     onClick={() => setScreen('results')}
                   />
                   <TrendCard
-                    type="MIXED"
+                    type="HALF CAP"
                     category="Tech News"
                     time="12h ago"
                     claim="The new AI model is 400% more efficient at coding than last year."

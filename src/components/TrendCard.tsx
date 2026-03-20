@@ -2,7 +2,7 @@ import React from 'react';
 import { cn } from '@/src/lib/utils';
 
 interface TrendCardProps {
-  type: 'CAP' | 'FACTS' | 'MIXED';
+  type: 'CAP' | 'NO CAP' | 'HALF CAP';
   category: string;
   time: string;
   claim: string;
@@ -13,31 +13,31 @@ interface TrendCardProps {
 
 export function TrendCard({ type, category, time, claim, stats, onClick, onBadgeClick }: TrendCardProps) {
   const typeStyles = {
-    CAP: "border-primary bg-primary/10 text-primary",
-    FACTS: "border-secondary bg-secondary/10 text-secondary",
-    MIXED: "border-tertiary bg-tertiary/10 text-tertiary",
+    'CAP': "border-primary bg-primary/10 text-primary",
+    'NO CAP': "border-secondary bg-secondary/10 text-secondary",
+    'HALF CAP': "border-tertiary bg-tertiary/10 text-tertiary",
   };
 
   const badgeStyles = {
-    CAP: "bg-primary-dim text-white",
-    FACTS: "bg-secondary text-black",
-    MIXED: "bg-tertiary text-black",
+    'CAP': "bg-primary-dim text-white",
+    'NO CAP': "bg-secondary text-black",
+    'HALF CAP': "bg-tertiary text-black",
   };
 
   return (
-    <div 
+    <div
       onClick={onClick}
       className={cn(
         "bg-surface rounded-3xl p-8 relative border-l-4 group hover:bg-surface-high transition-all cursor-pointer",
-        type === 'CAP' ? "border-primary" : type === 'FACTS' ? "border-secondary" : "border-tertiary"
+        type === 'CAP' ? "border-primary" : type === 'NO CAP' ? "border-secondary" : "border-tertiary"
       )}
     >
-      <div 
+      <div
         onClick={onBadgeClick}
         className={cn(
           "absolute top-6 right-6 font-headline font-black text-xs px-3 py-1 rounded-full transition-transform group-hover:rotate-0 uppercase",
           badgeStyles[type],
-          type === 'CAP' ? "rotate-3" : type === 'FACTS' ? "-rotate-2" : "rotate-1",
+          type === 'CAP' ? "rotate-3" : type === 'NO CAP' ? "-rotate-2" : "rotate-1",
           onBadgeClick ? "cursor-pointer hover:scale-105" : ""
         )}
       >
