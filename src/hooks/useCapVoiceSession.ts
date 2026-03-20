@@ -21,6 +21,7 @@ export function useCapVoiceSession({
 }: UseCapVoiceSessionOptions) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<{ text: string; role: 'user' | 'ai' }[]>([]);
 
   const conversation = useConversation({
     clientTools: {
@@ -35,6 +36,12 @@ export function useCapVoiceSession({
           persistResult: false,
         });
       }) as any,
+    },
+    onMessage: (message: any) => {
+      setMessages((prev) => [...prev, {
+        text: message.message || message.text || "",
+        role: message.role || message.source || "ai"
+      }]);
     },
     onDisconnect: () => {
       setConversationId(null);
@@ -70,9 +77,9 @@ export function useCapVoiceSession({
     endVoiceSession,
     isSpeaking: conversation.isSpeaking,
     lastError,
+    messages,
     sendUserMessage: conversation.sendUserMessage,
     startVoiceSession,
     status: conversation.status,
-    transcript: conversation.transcript,
   };
 }

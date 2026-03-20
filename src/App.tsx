@@ -260,7 +260,7 @@ export default function App() {
     endVoiceSession,
     startVoiceSession,
     status: voiceStatus,
-    transcript,
+    messages,
   } = useCapVoiceSession({
     visitorId: visitorIdRef.current,
     onCheckClaim: async (input) => {
@@ -840,8 +840,8 @@ export default function App() {
 
               <div className="min-h-[100px] flex items-center justify-center">
                 <p className="font-headline text-3xl md:text-5xl font-black text-white leading-tight tracking-tight italic">
-                  {transcript && transcript.length > 0 ? (
-                    <>"{transcript[transcript.length - 1].text}"</>
+                  {messages && messages.length > 0 ? (
+                    <>"{messages[messages.length - 1].text}"</>
                   ) : (
                     <>
                       "Yo Cap, <span className="text-outline">is this true? I saw a post that said...</span>"
