@@ -137,14 +137,17 @@ function parseInput(body: unknown): ParsedInput | CheckClaimError {
   }
 
   const question = normalizeString(payload.question);
-  const claimText = normalizeString(payload.claimText) || undefined;
-  const url = normalizeString(payload.url) || undefined;
+  const claimText = normalizeString(payload.claimText || payload.claim_text);
+  const url = normalizeString(payload.url);
   const mode = normalizeString(payload.mode) === 'voice' ? 'voice' : 'manual';
-  const visitorId = normalizeString(payload.visitorId) || undefined;
-  const persistResult = Boolean(payload.persistResult);
+  const visitorId = normalizeString(payload.visitorId || payload.visitor_id);
+  const persistResult = Boolean(payload.persistResult || payload.persist_result);
   const metadata = parseJsonObject(payload.metadata);
 
-  if (!question) {
+  // Fallback question if for some reason the agent only sends the claim
+  const finalQuestion = question || (claimText ? `Is it true that ${claimText}?` : url ? `Is this URL trustworthy: ${url}?` : '');
+
+  if (!finalQuestion) {
     return {
       error: {
         code: 'VALIDATION_ERROR',
@@ -179,7 +182,7 @@ function parseInput(body: unknown): ParsedInput | CheckClaimError {
   }
 
   return {
-    question,
+    question: finalQuestion,
     claimText,
     url,
     mode,

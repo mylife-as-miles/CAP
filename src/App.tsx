@@ -203,6 +203,14 @@ export default function App() {
 
       setActiveResult(buildResultViewFromCheck(displayText, response, Date.now() - startedAt));
       setScreen('results');
+
+      // Auto-terminate voice session after a short delay to allow agent to finish playback
+      if (options.mode === 'voice') {
+        setTimeout(() => {
+          endVoiceSession();
+        }, 5000); // 5s is usually enough for a sharp verdict line
+      }
+
       trackEvent('verdict_viewed', response.persistedClaimId, {
         mode: options.mode,
         verdict: response.verdict,
