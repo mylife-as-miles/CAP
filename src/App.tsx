@@ -28,88 +28,88 @@ export default function App() {
   const [showNotificationToast, setShowNotificationToast] = useState<string | null>(null);
 
   const [topCapsData, setTopCapsData] = useState([
-    { 
-      id: 1, 
-      claim: "Drinking 4L of salt water cures all winter fatigue instantly.", 
-      shares: 8400, 
-      laughedAt: 12000, 
-      dateAdded: '2026-03-18', 
-      category: 'Health', 
+    {
+      id: 1,
+      claim: "Drinking 4L of salt water cures all winter fatigue instantly.",
+      shares: 8400,
+      laughedAt: 12000,
+      dateAdded: '2026-03-18',
+      category: 'Health',
       details: "This claim originated from a viral TikTok video. Medical professionals warn that consuming excessive salt water can lead to severe dehydration and hypernatremia.",
       sources: [
         { name: 'World Health Organization', url: 'https://who.int', text: '"Excessive sodium intake is linked to adverse health outcomes and does not cure fatigue."' },
         { name: 'Mayo Clinic', url: 'https://mayoclinic.org', text: '"Drinking large amounts of salt water can cause dangerous electrolyte imbalances."' }
       ]
     },
-    { 
-      id: 2, 
-      claim: "Eating raw onions before bed prevents all seasonal allergies.", 
-      shares: 5200, 
-      laughedAt: 8000, 
-      dateAdded: '2026-03-17', 
-      category: 'Health', 
+    {
+      id: 2,
+      claim: "Eating raw onions before bed prevents all seasonal allergies.",
+      shares: 5200,
+      laughedAt: 8000,
+      dateAdded: '2026-03-17',
+      category: 'Health',
       details: "A persistent myth circulated in holistic health forums. There is no scientific evidence linking raw onion consumption to allergy prevention.",
       sources: [
         { name: 'American Academy of Allergy', url: 'https://aaaai.org', text: '"There is no clinical evidence supporting onions as a preventative measure for seasonal allergies."' }
       ]
     },
-    { 
-      id: 3, 
-      claim: "5G towers are responsible for the new strain of the common cold.", 
-      shares: 4100, 
-      laughedAt: 15000, 
-      dateAdded: '2026-03-19', 
-      category: 'Tech', 
+    {
+      id: 3,
+      claim: "5G towers are responsible for the new strain of the common cold.",
+      shares: 4100,
+      laughedAt: 15000,
+      dateAdded: '2026-03-19',
+      category: 'Tech',
       details: "A recurring conspiracy theory. Viruses cannot be transmitted through radio waves or cellular networks.",
       sources: [
         { name: 'FCC', url: 'https://fcc.gov', text: '"Radiofrequency emissions from 5G technology do not cause or transmit viral infections."' },
         { name: 'CDC', url: 'https://cdc.gov', text: '"The common cold is caused by rhinoviruses, which spread through respiratory droplets, not electromagnetic waves."' }
       ]
     },
-    { 
-      id: 4, 
-      claim: "You can charge your phone by putting it in the microwave for 30 seconds.", 
-      shares: 3800, 
-      laughedAt: 22000, 
-      dateAdded: '2026-03-15', 
-      category: 'Tech', 
+    {
+      id: 4,
+      claim: "You can charge your phone by putting it in the microwave for 30 seconds.",
+      shares: 3800,
+      laughedAt: 22000,
+      dateAdded: '2026-03-15',
+      category: 'Tech',
       details: "An old internet prank that resurfaces occasionally. Microwaving electronics will destroy them and potentially cause a fire.",
       sources: [
         { name: 'Consumer Reports', url: 'https://consumerreports.org', text: '"Microwaving any electronic device will cause irreparable damage and poses a severe fire hazard."' }
       ]
     },
-    { 
-      id: 5, 
-      claim: "Staring at the sun for 5 minutes a day improves your vision.", 
-      shares: 2900, 
-      laughedAt: 9500, 
-      dateAdded: '2026-03-16', 
-      category: 'Health', 
+    {
+      id: 5,
+      claim: "Staring at the sun for 5 minutes a day improves your vision.",
+      shares: 2900,
+      laughedAt: 9500,
+      dateAdded: '2026-03-16',
+      category: 'Health',
       details: "Also known as 'sun gazing'. Ophthalmologists strongly advise against this as it can cause permanent retinal damage.",
       sources: [
         { name: 'American Academy of Ophthalmology', url: 'https://aao.org', text: '"Looking directly at the sun without proper eye protection can cause solar retinopathy, leading to permanent vision loss."' }
       ]
     },
-    { 
-      id: 6, 
-      claim: "The earth is actually flat and Australia is a hoax.", 
-      shares: 1500, 
-      laughedAt: 35000, 
-      dateAdded: '2026-03-10', 
-      category: 'Science', 
+    {
+      id: 6,
+      claim: "The earth is actually flat and Australia is a hoax.",
+      shares: 1500,
+      laughedAt: 35000,
+      dateAdded: '2026-03-10',
+      category: 'Science',
       details: "A combination of two popular conspiracy theories. Satellite imagery and basic physics disprove the flat earth theory, and Australia is a real continent.",
       sources: [
         { name: 'NASA', url: 'https://nasa.gov', text: '"Decades of satellite imagery and space exploration confirm the Earth is an oblate spheroid."' },
         { name: 'Australian Government', url: 'https://australia.gov.au', text: '"Australia is a sovereign country and continent with a population of over 26 million people."' }
       ]
     },
-    { 
-      id: 7, 
-      claim: "New legislation will ban all gas-powered vehicles by 2028.", 
-      shares: 6000, 
-      laughedAt: 2000, 
-      dateAdded: '2026-03-19', 
-      category: 'Politics', 
+    {
+      id: 7,
+      claim: "New legislation will ban all gas-powered vehicles by 2028.",
+      shares: 6000,
+      laughedAt: 2000,
+      dateAdded: '2026-03-19',
+      category: 'Politics',
       details: "A misinterpretation of a proposed bill that aimed to increase electric vehicle incentives, not ban gas vehicles entirely.",
       sources: [
         { name: 'GovTrack', url: 'https://govtrack.us', text: '"The proposed legislation (HR-1042) focuses on tax incentives for EV manufacturers and does not contain provisions banning existing gas-powered vehicles."' }
@@ -196,8 +196,8 @@ export default function App() {
     if (!shareCardRef.current) return;
     try {
       setIsDownloading(true);
-      const dataUrl = await toPng(shareCardRef.current, { 
-        cacheBust: true, 
+      const dataUrl = await toPng(shareCardRef.current, {
+        cacheBust: true,
         pixelRatio: 2,
         backgroundColor: '#0A0A0A'
       });
@@ -230,7 +230,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background selection:bg-primary selection:text-black">
       <Header activeTab={screen} onNavigate={setScreen} />
-      
+
       <AnimatePresence>
         {showNotificationToast && (
           <motion.div
@@ -259,7 +259,7 @@ export default function App() {
               <div className="relative flex flex-col items-center mb-16 w-full max-w-2xl mt-12">
                 <div className="absolute -left-20 top-0 hidden xl:flex flex-col gap-4">
                   {['Is this true?', 'Red flags?', 'Should I trust this?'].map((text, i) => (
-                    <button 
+                    <button
                       key={text}
                       className={cn(
                         "bg-surface-high text-white rounded-full px-6 py-3 font-label text-sm uppercase tracking-widest hover:bg-primary hover:text-black transition-all active:scale-95 whitespace-nowrap",
@@ -270,15 +270,15 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                
+
                 <div className="mb-8">
                   <span className="font-label text-[10px] uppercase tracking-[0.2em] text-outline bg-surface-high px-4 py-2 rounded-full border border-white/5">
                     Powered by Firecrawl & ElevenLabs
                   </span>
                 </div>
-                
+
                 <MicOrb onClick={handleMicClick} />
-                
+
                 <div className="mt-8 text-center">
                   <h1 className="font-headline text-5xl md:text-7xl font-black uppercase tracking-tighter mb-4 text-white">
                     Tap to ask Cap
@@ -298,9 +298,9 @@ export default function App() {
                       "w-full relative flex items-center p-2 bg-surface rounded-full border transition-colors shadow-2xl",
                       inputError ? "border-red-500 focus-within:border-red-400" : "border-white/5 focus-within:border-primary/50"
                     )}>
-                      <input 
-                        className="w-full bg-transparent border-none focus:ring-0 px-8 py-4 font-body text-xl text-white placeholder:text-outline/50" 
-                        placeholder="Paste a URL to check (e.g., https://news.com/article)" 
+                      <input
+                        className="w-full bg-transparent border-none focus:ring-0 px-8 py-4 font-body text-xl text-white placeholder:text-outline/50"
+                        placeholder="Paste a URL to check (e.g., https://news.com/article)"
                         type="text"
                         value={inputValue}
                         onChange={(e) => {
@@ -309,7 +309,7 @@ export default function App() {
                         }}
                         onKeyDown={(e) => e.key === 'Enter' && handleCheck()}
                       />
-                      <button 
+                      <button
                         onClick={handleCheck}
                         className="bg-primary text-black font-headline font-black uppercase tracking-tighter px-10 py-4 rounded-full hover:bg-primary-dim transition-colors active:scale-95"
                       >
@@ -318,7 +318,7 @@ export default function App() {
                     </div>
                     <AnimatePresence>
                       {inputError && (
-                        <motion.p 
+                        <motion.p
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
@@ -339,7 +339,7 @@ export default function App() {
                     <span className="font-label text-xs uppercase tracking-[0.3em] text-primary mb-2 block">Trending Investigations</span>
                     <h2 className="font-headline text-4xl font-black uppercase tracking-tighter">Top Caps</h2>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setScreen('trends')}
                     className="font-label text-xs uppercase tracking-[0.2em] text-tertiary hover:opacity-80 transition-opacity font-bold"
                     style={{ textShadow: '-1.5px 0 0 #FF3B30, 1.5px 0 0 #34C759' }}
@@ -348,29 +348,29 @@ export default function App() {
                   </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <TrendCard 
-                    type="CAP" 
-                    category="Social Media" 
-                    time="2h ago" 
-                    claim="Drinking 4L of salt water cures all winter fatigue instantly." 
-                    stats="842 researchers checked" 
+                  <TrendCard
+                    type="CAP"
+                    category="Social Media"
+                    time="2h ago"
+                    claim="Drinking 4L of salt water cures all winter fatigue instantly."
+                    stats="842 researchers checked"
                     onClick={() => setScreen('results')}
                     onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                   />
-                  <TrendCard 
-                    type="FACTS" 
-                    category="Economics" 
-                    time="5h ago" 
-                    claim="New housing starts in the metro area hit a 10-year high this June." 
-                    stats="1.2k sources verified" 
+                  <TrendCard
+                    type="FACTS"
+                    category="Economics"
+                    time="5h ago"
+                    claim="New housing starts in the metro area hit a 10-year high this June."
+                    stats="1.2k sources verified"
                     onClick={() => setScreen('results')}
                   />
-                  <TrendCard 
-                    type="MIXED" 
-                    category="Tech News" 
-                    time="12h ago" 
-                    claim="The new AI model is 400% more efficient at coding than last year." 
-                    stats="Nuanced breakdown inside" 
+                  <TrendCard
+                    type="MIXED"
+                    category="Tech News"
+                    time="12h ago"
+                    claim="The new AI model is 400% more efficient at coding than last year."
+                    stats="Nuanced breakdown inside"
                     onClick={() => setScreen('results')}
                   />
                 </div>
@@ -395,12 +395,12 @@ export default function App() {
                   Listening...
                 </span>
               </div>
-              
+
               <MicOrb isListening />
 
               <div className="mt-16 h-16 flex items-center justify-center gap-1.5 w-full max-w-2xl">
                 {[4, 8, 12, 6, 10, 5, 12, 9, 4, 11, 6, 3, 7, 10, 14, 8, 12, 5, 9, 4, 11, 6, 8, 4].map((h, i) => (
-                  <motion.div 
+                  <motion.div
                     key={i}
                     animate={{ height: [h * 3, h * 6, h * 3] }}
                     transition={{ duration: 0.4 + (i % 3) * 0.1, repeat: Infinity, delay: i * 0.05 }}
@@ -426,7 +426,7 @@ export default function App() {
                 ))}
               </div>
 
-              <button 
+              <button
                 onClick={() => setScreen('home')}
                 className="mt-20 group flex flex-col items-center gap-2 text-outline hover:text-primary transition-all duration-300"
               >
@@ -462,7 +462,7 @@ export default function App() {
                     <h2 className="font-headline text-3xl font-black uppercase tracking-tighter text-primary mb-8">Cap is checking...</h2>
                     <div className="space-y-8 relative">
                       <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-white/10"></div>
-                      
+
                       <div className="flex gap-6 relative">
                         <div className="z-10 w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-black shadow-[0_0_15px_rgba(111,251,133,0.4)]">
                           <Check size={16} />
@@ -509,7 +509,7 @@ export default function App() {
                     <h3 className="font-label text-xs tracking-widest uppercase text-outline font-bold">Live Evidence Stream</h3>
                     <span className="text-[10px] font-label text-secondary animate-pulse">4 SOURCES FOUND</span>
                   </div>
-                  
+
                   {[
                     { site: 'REUTERS.COM', color: 'text-secondary', text: '"Consumer spending remains resilient in Q1 despite inflationary pressures, showing a 1.2% increase..."' },
                     { site: 'BLOOMBERG', color: 'text-tertiary', text: '"Market analysts predict a softening but highlight that \'40%\' claims are statistically unfounded..."' }
@@ -528,7 +528,7 @@ export default function App() {
                     <div className="flex flex-col items-center gap-2">
                       <div className="flex gap-1">
                         {[0, 1, 2].map(i => (
-                          <motion.span 
+                          <motion.span
                             key={i}
                             animate={{ y: [0, -5, 0] }}
                             transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
@@ -559,16 +559,21 @@ export default function App() {
                       <span className="font-label text-xs uppercase tracking-[0.2em] text-primary bg-primary/10 px-3 py-1 rounded-full">Confidence: High</span>
                       <span className="font-label text-xs uppercase tracking-[0.2em] text-outline">Ref ID: 8821-X</span>
                     </div>
-                    <div className="flex items-center justify-center gap-4 mb-4 relative group">
-                      <h1 className="font-headline text-[80px] md:text-[140px] leading-none font-black text-primary uppercase italic tracking-tighter">CAP</h1>
-                      <div className="relative cursor-help mt-4 md:mt-8">
-                        <Info size={32} className="text-outline group-hover:text-primary transition-colors" />
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-64 p-4 bg-surface-high border border-white/10 rounded-2xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                          <p className="font-body text-sm text-white normal-case not-italic text-left font-normal">
-                            Flagged as CAP due to significant contradictions with official documentation and verified pricing data.
+                    <div className="flex items-center justify-center gap-4 mb-4 relative">
+                      <div className="relative group/cap cursor-help">
+                        <h1 className="font-headline text-[80px] md:text-[140px] leading-none font-black text-primary uppercase italic tracking-tighter">CAP</h1>
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-80 p-5 bg-surface-high border border-white/10 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.5)] opacity-0 group-hover/cap:opacity-100 transition-all duration-200 pointer-events-none z-50">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="bg-primary/20 text-primary px-3 py-1 rounded-full font-label text-[10px] uppercase tracking-widest">Verdict Reasoning</span>
+                          </div>
+                          <p className="font-body text-sm text-white normal-case not-italic text-left font-normal leading-relaxed">
+                            Flagged as CAP due to significant contradictions with official documentation and verified pricing data. The claim overstates what the sources actually support.
                           </p>
                           <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-surface-high border-b border-r border-white/10 rotate-45"></div>
                         </div>
+                      </div>
+                      <div className="mt-4 md:mt-8">
+                        <Info size={32} className="text-outline/50" />
                       </div>
                     </div>
                     <p className="font-headline text-2xl md:text-3xl text-white max-w-2xl font-bold leading-tight italic mb-8">
@@ -576,7 +581,7 @@ export default function App() {
                     </p>
                     <div className="h-10 flex items-center justify-center gap-1.5 w-full max-w-sm opacity-60">
                       {[3, 5, 8, 4, 7, 3, 8, 6, 3, 7, 4, 2, 5, 7, 4, 8, 3, 6, 4, 3, 6, 8, 5, 4].map((h, i) => (
-                        <motion.div 
+                        <motion.div
                           key={i}
                           animate={{ height: [h * 2, h * 4, h * 2] }}
                           transition={{ duration: 0.4 + (i % 3) * 0.1, repeat: Infinity, delay: i * 0.05 }}
@@ -668,43 +673,43 @@ export default function App() {
 
               <div className="fixed bottom-0 left-0 w-full z-40 px-6 pb-12 pt-12 bg-gradient-to-t from-background via-background/90 to-transparent pointer-events-none">
                 <div className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row flex-nowrap gap-4 justify-center items-center pointer-events-auto">
-                  <button 
+                  <button
                     onClick={handleShare}
                     className="w-full lg:w-auto px-6 py-4 text-sm bg-surface-high text-white font-headline font-black uppercase tracking-widest rounded-full hover:bg-white/10 transition-all flex items-center justify-center gap-3 active:scale-95 whitespace-nowrap"
                   >
                     <Share2 size={20} />
                     Share Result
                   </button>
-                  <button 
+                  <button
                     onClick={handleAddToTopCaps}
                     disabled={isAddedToTopCaps}
                     className={cn(
                       "w-full lg:w-auto px-6 py-4 text-sm font-headline font-black uppercase tracking-widest rounded-full transition-all flex items-center justify-center gap-3 active:scale-95 whitespace-nowrap",
-                      isAddedToTopCaps 
-                        ? "bg-surface-high text-primary border border-primary/30 cursor-default" 
+                      isAddedToTopCaps
+                        ? "bg-surface-high text-primary border border-primary/30 cursor-default"
                         : "bg-primary text-black hover:bg-primary-dim shadow-[0_0_25px_rgba(255,142,128,0.4)]"
                     )}
                   >
                     {isAddedToTopCaps ? <Check size={20} /> : <Star size={20} fill="currentColor" />}
                     {isAddedToTopCaps ? 'Added to Top Caps' : 'Add to Top Caps'}
                   </button>
-                  <button 
+                  <button
                     onClick={() => setIsFlagged(true)}
                     disabled={isFlagged}
                     className={cn(
                       "w-full lg:w-auto px-6 py-4 text-sm font-headline font-black uppercase tracking-widest rounded-full transition-all flex items-center justify-center gap-3 active:scale-95 whitespace-nowrap",
-                      isFlagged 
-                        ? "bg-surface-high text-outline border border-white/10 cursor-default" 
+                      isFlagged
+                        ? "bg-surface-high text-outline border border-white/10 cursor-default"
                         : "bg-surface text-white hover:bg-surface-high border border-white/10"
                     )}
                   >
                     <Flag size={20} className={isFlagged ? "fill-current" : ""} />
                     {isFlagged ? 'Flagged' : 'Flag Result'}
                   </button>
-                  <button 
-                    onClick={() => { 
-                      setScreen('home'); 
-                      setInputValue(''); 
+                  <button
+                    onClick={() => {
+                      setScreen('home');
+                      setInputValue('');
                       setIsShared(false);
                       setIsAddedToTopCaps(false);
                       setIsFlagged(false);
@@ -741,24 +746,13 @@ export default function App() {
                   <Flame className="text-primary" />
                   Most Delusional Claim Today
                 </h2>
-                <motion.div 
+                <motion.div
                   animate={{ boxShadow: ['0 0 0 rgba(226,36,31,0)', '0 0 20px rgba(226,36,31,0.3)', '0 0 0 rgba(226,36,31,0)'] }}
                   transition={{ duration: 2, repeat: Infinity }}
-                  className="bg-surface-high border-2 border-primary/50 rounded-3xl p-8 relative overflow-hidden group cursor-help"
+                  className="bg-surface-high border-2 border-primary/50 rounded-3xl p-8 relative overflow-hidden"
                 >
-                  {/* Tooltip on hover */}
-                  <div className="absolute inset-0 bg-surface-high/95 backdrop-blur-sm z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-center p-8">
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className="bg-primary/20 text-primary px-3 py-1 rounded-full font-label text-xs uppercase tracking-widest">Science</span>
-                    </div>
-                    <h4 className="font-label text-sm uppercase tracking-widest text-primary mb-2">Why it's Cap</h4>
-                    <p className="text-white font-body text-lg leading-relaxed">
-                      James Cameron was 14 years old during the 1969 moon landing. Furthermore, the CGI technology required to fake the moon landing did not exist until decades later.
-                    </p>
-                  </div>
-
                   {/* Shimmer effect */}
-                  <motion.div 
+                  <motion.div
                     animate={{ x: ['-100%', '200%'] }}
                     transition={{ duration: 3, repeat: Infinity, ease: "linear", repeatDelay: 1 }}
                     className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent skew-x-12 z-0"
@@ -766,9 +760,26 @@ export default function App() {
                   <div className="absolute top-0 right-0 bg-primary text-white font-label text-[10px] uppercase tracking-widest px-4 py-2 rounded-bl-xl font-bold z-10">
                     Cap of the Day
                   </div>
-                  <p className="font-headline text-2xl md:text-4xl font-bold text-white mb-8 leading-tight mt-4 relative z-10">
-                    "The moon landing was faked using early CGI from a time-traveling James Cameron."
-                  </p>
+                  <div className="relative z-10 group/claim cursor-help">
+                    <p className="font-headline text-2xl md:text-4xl font-bold text-white mb-2 leading-tight mt-4">
+                      "The moon landing was faked using early CGI from a time-traveling James Cameron."
+                    </p>
+                    {/* Tooltip on hover over claim text */}
+                    <div className="absolute bottom-full left-0 mb-3 w-full max-w-md p-5 bg-surface border border-white/10 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.6)] opacity-0 group-hover/claim:opacity-100 transition-all duration-200 pointer-events-none z-30">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="bg-primary/20 text-primary px-3 py-1 rounded-full font-label text-[10px] uppercase tracking-widest">Science</span>
+                      </div>
+                      <h4 className="font-label text-xs uppercase tracking-widest text-primary mb-2">Why it's Cap</h4>
+                      <p className="text-white/90 font-body text-sm leading-relaxed normal-case font-normal">
+                        James Cameron was 14 years old during the 1969 moon landing. Furthermore, the CGI technology required to fake the moon landing did not exist until decades later.
+                      </p>
+                      <div className="absolute -bottom-2 left-8 w-4 h-4 bg-surface border-b border-r border-white/10 rotate-45"></div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mb-6 relative z-10">
+                    <Info size={14} className="text-outline/50" />
+                    <span className="font-label text-[10px] uppercase tracking-widest text-outline/50">Hover claim for details</span>
+                  </div>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-white/10 pt-6 gap-4 relative z-10">
                     <div className="flex items-center gap-4 text-outline text-sm font-label uppercase tracking-wider">
                       <span className="flex items-center gap-2"><Flame size={16} className="text-primary" /> 42.8k Laughed</span>
@@ -794,11 +805,11 @@ export default function App() {
                     <Camera className="text-white" />
                     Caught in 4K
                   </h2>
-                  
+
                   {/* Sorting and Filtering Controls */}
                   <div className="flex flex-wrap items-center gap-3">
                     <div className="relative">
-                      <div 
+                      <div
                         onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
                         className="flex items-center gap-2 bg-surface border border-white/10 rounded-full px-4 py-2 cursor-pointer hover:bg-white/5 transition-colors"
                       >
@@ -808,7 +819,7 @@ export default function App() {
                         </span>
                         <ChevronDown size={14} className="text-outline ml-1" />
                       </div>
-                      
+
                       <AnimatePresence>
                         {isCategoryDropdownOpen && (
                           <motion.div
@@ -818,7 +829,7 @@ export default function App() {
                             className="absolute top-full left-0 mt-2 w-56 bg-surface-high border border-white/10 rounded-xl shadow-xl overflow-hidden z-50"
                           >
                             {['All', 'Health', 'Tech', 'Science', 'Politics'].map((category) => (
-                              <div 
+                              <div
                                 key={category}
                                 onClick={() => {
                                   setTopCapsFilterCategory(category);
@@ -855,7 +866,7 @@ export default function App() {
                       </AnimatePresence>
                     </div>
                     <div className="relative">
-                      <div 
+                      <div
                         onClick={() => setIsSortDropdownOpen(!isSortDropdownOpen)}
                         className="flex items-center gap-2 bg-surface border border-white/10 rounded-full px-4 py-2 cursor-pointer hover:bg-white/5 transition-colors"
                       >
@@ -865,7 +876,7 @@ export default function App() {
                         </span>
                         <ChevronDown size={14} className="text-outline ml-1" />
                       </div>
-                      
+
                       <AnimatePresence>
                         {isSortDropdownOpen && (
                           <motion.div
@@ -875,7 +886,7 @@ export default function App() {
                             className="absolute top-full left-0 mt-2 w-56 bg-surface-high border border-white/10 rounded-xl shadow-xl overflow-hidden z-50"
                           >
                             {['Shares', 'Laughed At', 'Date Added'].map((sortOption) => (
-                              <div 
+                              <div
                                 key={sortOption}
                                 onClick={() => {
                                   setTopCapsSortBy(sortOption as any);
@@ -899,7 +910,7 @@ export default function App() {
                       </AnimatePresence>
                     </div>
                     {(topCapsFilterCategory !== 'All' || topCapsSortBy !== 'Shares') && (
-                      <button 
+                      <button
                         onClick={resetFilters}
                         className="flex items-center gap-2 bg-surface-high border border-white/10 text-white rounded-full px-4 py-2 font-label text-xs uppercase tracking-widest hover:bg-white/5 transition-colors"
                       >
@@ -912,8 +923,8 @@ export default function App() {
                 <div className="flex flex-col gap-4">
                   {filteredAndSortedTopCaps.length > 0 ? (
                     filteredAndSortedTopCaps.map((item, index) => (
-                      <div 
-                        key={item.id} 
+                      <div
+                        key={item.id}
                         onClick={() => toggleExpand(item.id)}
                         className="bg-surface border border-white/5 rounded-2xl p-6 flex flex-col hover:border-white/20 transition-colors group cursor-pointer relative overflow-hidden"
                       >
@@ -929,14 +940,14 @@ export default function App() {
                             </p>
                           </div>
                           <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                            <button 
+                            <button
                               onClick={(e) => handleLaugh(e, item.id)}
                               className="text-outline hover:text-primary transition-colors p-3 bg-surface-high rounded-full opacity-100 sm:opacity-0 group-hover:opacity-100"
                               title="Laugh at this claim"
                             >
                               <Flame size={18} />
                             </button>
-                            <button 
+                            <button
                               onClick={(e) => { e.stopPropagation(); handleShare(); }}
                               className="text-outline hover:text-white transition-colors p-3 bg-surface-high rounded-full opacity-100 sm:opacity-0 group-hover:opacity-100"
                               title="Share this claim"
@@ -948,7 +959,7 @@ export default function App() {
                             </div>
                           </div>
                         </div>
-                        
+
                         <AnimatePresence>
                           {expandedCards.includes(item.id) && (
                             <motion.div
@@ -962,7 +973,7 @@ export default function App() {
                                 <p className="text-outline font-body text-sm leading-relaxed mb-6">
                                   {item.details}
                                 </p>
-                                
+
                                 {item.sources && item.sources.length > 0 && (
                                   <div>
                                     <h4 className="font-label text-xs uppercase tracking-widest text-white mb-3 flex items-center gap-2">
@@ -971,7 +982,7 @@ export default function App() {
                                     </h4>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                       {item.sources.map((source, idx) => (
-                                        <a 
+                                        <a
                                           key={idx}
                                           href={source.url}
                                           target="_blank"
@@ -1033,9 +1044,9 @@ export default function App() {
             >
               <h1 className="font-headline text-4xl md:text-6xl font-black uppercase italic tracking-tighter mb-8 text-white">Profile</h1>
               <div className="w-32 h-32 mx-auto rounded-full overflow-hidden border-4 border-surface-high bg-surface mb-8">
-                <img 
-                  alt="Profile" 
-                  src="https://picsum.photos/seed/avatar/200/200" 
+                <img
+                  alt="Profile"
+                  src="https://picsum.photos/seed/avatar/200/200"
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover"
                 />
@@ -1077,59 +1088,59 @@ export default function App() {
                   A comprehensive view of the most widely circulated claims, rumors, and investigations across the network.
                 </p>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <TrendCard 
-                  type="CAP" 
-                  category="Social Media" 
-                  time="2h ago" 
-                  claim="Drinking 4L of salt water cures all winter fatigue instantly." 
-                  stats="842 researchers checked" 
+                <TrendCard
+                  type="CAP"
+                  category="Social Media"
+                  time="2h ago"
+                  claim="Drinking 4L of salt water cures all winter fatigue instantly."
+                  stats="842 researchers checked"
                   onClick={() => setScreen('results')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
-                <TrendCard 
-                  type="CAP" 
-                  category="Economics" 
-                  time="5h ago" 
-                  claim="New housing starts in the metro area hit a 10-year high this June." 
-                  stats="1.2k sources verified" 
+                <TrendCard
+                  type="CAP"
+                  category="Economics"
+                  time="5h ago"
+                  claim="New housing starts in the metro area hit a 10-year high this June."
+                  stats="1.2k sources verified"
                   onClick={() => setScreen('results')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
-                <TrendCard 
-                  type="CAP" 
-                  category="Tech News" 
-                  time="12h ago" 
-                  claim="The new AI model is 400% more efficient at coding than last year." 
-                  stats="Nuanced breakdown inside" 
+                <TrendCard
+                  type="CAP"
+                  category="Tech News"
+                  time="12h ago"
+                  claim="The new AI model is 400% more efficient at coding than last year."
+                  stats="Nuanced breakdown inside"
                   onClick={() => setScreen('results')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
-                <TrendCard 
-                  type="CAP" 
-                  category="Health" 
-                  time="1d ago" 
-                  claim="Eating raw onions before bed prevents all seasonal allergies." 
-                  stats="5.3k researchers checked" 
+                <TrendCard
+                  type="CAP"
+                  category="Health"
+                  time="1d ago"
+                  claim="Eating raw onions before bed prevents all seasonal allergies."
+                  stats="5.3k researchers checked"
                   onClick={() => setScreen('results')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
-                <TrendCard 
-                  type="CAP" 
-                  category="Science" 
-                  time="1d ago" 
-                  claim="Astronomers discover a new exoplanet with water vapor in its atmosphere." 
-                  stats="890 sources verified" 
+                <TrendCard
+                  type="CAP"
+                  category="Science"
+                  time="1d ago"
+                  claim="Astronomers discover a new exoplanet with water vapor in its atmosphere."
+                  stats="890 sources verified"
                   onClick={() => setScreen('results')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
-                <TrendCard 
-                  type="CAP" 
-                  category="Politics" 
-                  time="2d ago" 
-                  claim="New legislation will ban all gas-powered vehicles by 2028." 
-                  stats="Nuanced breakdown inside" 
+                <TrendCard
+                  type="CAP"
+                  category="Politics"
+                  time="2d ago"
+                  claim="New legislation will ban all gas-powered vehicles by 2028."
+                  stats="Nuanced breakdown inside"
                   onClick={() => setScreen('results')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
@@ -1141,14 +1152,14 @@ export default function App() {
         {/* Share Card Modal */}
         <AnimatePresence>
           {showShareCard && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
               onClick={() => setShowShareCard(false)}
             >
-              <motion.div 
+              <motion.div
                 ref={shareCardRef}
                 initial={{ scale: 0.95, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
@@ -1159,32 +1170,32 @@ export default function App() {
                 {/* Background effects */}
                 <div className="absolute inset-0 bg-gradient-to-b from-primary/20 to-transparent opacity-30" />
                 <div className="absolute top-0 left-0 w-full h-2 bg-primary" />
-                
+
                 <div className="flex-1 p-8 flex flex-col items-center justify-center text-center relative z-10">
                   <div className="mb-8">
                     <span className="font-label text-xs uppercase tracking-[0.2em] text-primary bg-primary/10 px-4 py-2 rounded-full border border-primary/20 font-bold">
                       99% Confidence
                     </span>
                   </div>
-                  
+
                   <h1 className="font-headline text-[110px] leading-none font-black text-primary uppercase italic tracking-tighter mb-8 drop-shadow-[0_0_40px_rgba(226,36,31,0.6)]">
                     CAP
                   </h1>
-                  
+
                   <p className="font-headline text-2xl text-white font-bold leading-tight italic">
                     "The headline overstates what the sources actually support."
                   </p>
                 </div>
-                
+
                 <div className="p-6 text-center relative z-10 border-t border-white/5 bg-black/40">
                   <p className="font-label text-[10px] uppercase tracking-widest text-outline opacity-60">
                     Checked with Firecrawl. Spoken by Cap on 11Labs.
                   </p>
                 </div>
               </motion.div>
-              
+
               {/* Close button - hidden in screenshots usually, but good for UX */}
-              <button 
+              <button
                 onClick={() => setShowShareCard(false)}
                 className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white/50 hover:text-white transition-colors z-20"
               >
@@ -1192,7 +1203,7 @@ export default function App() {
               </button>
 
               <div className="absolute bottom-8 left-0 w-full flex justify-center pointer-events-auto">
-                <button 
+                <button
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDownloadImage();
