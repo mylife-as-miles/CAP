@@ -9,6 +9,7 @@ import { TrendCard } from '@/src/components/TrendCard';
 import { supabase } from '@/src/lib/supabase';
 import { cn } from '@/src/lib/utils';
 import { getOrCreateAnonymousSessionId } from '@/src/lib/session';
+import { trackEvent, initAnalytics } from '@/src/lib/analytics';
 
 type Screen = 'home' | 'listening' | 'checking' | 'results' | 'top' | 'history' | 'profile' | 'notifications' | 'trends';
 type ClaimTarget = 'featured' | string;
@@ -100,8 +101,21 @@ export default function App() {
   };
 
   useEffect(() => {
+    initAnalytics();
     fetchClaims();
   }, []);
+
+  useEffect(() => {
+    if (screen === 'top' || screen === 'trends') {
+      trackEvent('top_caps_viewed');
+    }
+    if (screen === 'results') {
+      // Verdict view is tracked via handleViewClaim when coming from list,
+      // but if user lands here directly or via "Check", we track it.
+      // trackEvent('verdict_viewed'); // Handled by handleViewClaim or successful check?
+      // Actually handleViewClaim is better as it requires a claimId.
+    }
+  }, [screen]);
 
   const showToast = (message: string) => {
     setShowNotificationToast(message);
@@ -127,6 +141,7 @@ export default function App() {
 
   const openResultShareCard = () => {
     setIsShared(false);
+    trackEvent('share_clicked', undefined, { source: 'result_screen' });
     setShareCardData({
       footer: 'Checked with Firecrawl. Spoken by Cap on 11Labs.',
       shareText: 'CAP\n"The headline overstates what the sources actually support."',
@@ -152,6 +167,10 @@ export default function App() {
         user_session_id: sessionId
       });
 
+      if (!error && data === 'counted') {
+        trackEvent('share_clicked', featuredCap.id, { source: 'featured_card' });
+      }
+
       if (error || data === 'rate_limited') {
         setFeaturedCap(prevFeatured);
         if (data === 'rate_limited') showToast("Take a breath! You're sharing too fast.");
@@ -174,6 +193,10 @@ export default function App() {
       target_claim_id: target,
       user_session_id: sessionId
     });
+
+    if (!error && data === 'counted') {
+      trackEvent('share_clicked', target, { source: 'leaderboard' });
+    }
 
     if (error || data === 'rate_limited') {
       setTopCapsData(prevData);
@@ -199,6 +222,10 @@ export default function App() {
         user_session_id: sessionId
       });
 
+      if (!error && data === 'counted') {
+        trackEvent('laugh_clicked', featuredCap.id, { source: 'featured_card' });
+      }
+
       if (error || data === 'already_counted') {
         if (data === 'already_counted') {
           // Keep the visual vibe but don't increment the number if they already laughed
@@ -221,6 +248,10 @@ export default function App() {
       user_session_id: sessionId
     });
 
+    if (!error && data === 'counted') {
+      trackEvent('laugh_clicked', target, { source: 'leaderboard' });
+    }
+
     if (error || data === 'already_counted') {
       setTopCapsData(prevData);
     }
@@ -232,6 +263,7 @@ export default function App() {
       target_claim_id: claimId,
       user_session_id: sessionId
     });
+    trackEvent('verdict_viewed', claimId);
   };
 
   const toggleExpand = (id: string) => {
@@ -307,6 +339,7 @@ export default function App() {
       setInputError("Invalid URL. Please paste a valid link (e.g., https://example.com).");
       return;
     }
+    trackEvent('claim_checked', undefined, { input: inputValue });
     setScreen('checking');
   };
 
