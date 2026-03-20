@@ -1,0 +1,580 @@
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+  clampConfidence,
+  createClaimSlug,
+  type CapApiVerdict,
+  type CapSource,
+  type CheckClaimError,
+  type CheckClaimResponse,
+  toUiVerdict,
+} from '../../../shared/cap.ts';
+import { createCorsHeaders } from '../_shared/cors.ts';
+
+type ParsedInput = {
+  question: string;
+  claimText?: string;
+  url?: string;
+  mode: 'voice' | 'manual';
+  visitorId?: string;
+  metadata?: Record<string, unknown>;
+  persistResult: boolean;
+};
+
+type FirecrawlResult = {
+  title?: string;
+  description?: string;
+  snippet?: string;
+  url?: string;
+  markdown?: string;
+  metadata?: {
+    title?: string;
+    sourceURL?: string;
+    url?: string;
+  };
+};
+
+type FirecrawlPayload = {
+  success?: boolean;
+  data?: {
+    web?: FirecrawlResult[];
+    news?: FirecrawlResult[];
+  };
+  warning?: string | null;
+};
+
+const CREDIBLE_DOMAINS = [
+  'apnews.com',
+  'bbc.com',
+  'bloomberg.com',
+  'cdc.gov',
+  'ft.com',
+  'nature.com',
+  'nih.gov',
+  'npr.org',
+  'reuters.com',
+  'who.int',
+];
+
+const CONTRADICTION_TERMS = [
+  'debunked',
+  'denied',
+  'false',
+  'misleading',
+  'no evidence',
+  'not true',
+  'refuted',
+  'unsupported',
+  'wrong',
+];
+
+const SUPPORT_TERMS = [
+  'confirmed',
+  'evidence',
+  'official',
+  'reported',
+  'shows',
+  'supports',
+  'verified',
+];
+
+const NUANCE_TERMS = [
+  'context',
+  'however',
+  'lacks context',
+  'mixed',
+  'nuance',
+  'overstates',
+  'partly',
+  'partially',
+];
+
+function jsonResponse(body: CheckClaimResponse | CheckClaimError, status: number, origin: string | null) {
+  const headers = createCorsHeaders(origin);
+  if (!headers) {
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: 'UPSTREAM_ERROR',
+          message: 'Origin not allowed.',
+          retryable: false,
+        },
+      }),
+      {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+  }
+
+  return new Response(JSON.stringify(body), {
+    status,
+    headers,
+  });
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function normalizeString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function parseInput(body: unknown): ParsedInput | CheckClaimError {
+  const payload = parseJsonObject(body);
+  if (!payload) {
+    return {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request body must be a JSON object.',
+        retryable: false,
+      },
+    };
+  }
+
+  const question = normalizeString(payload.question);
+  const claimText = normalizeString(payload.claimText) || undefined;
+  const url = normalizeString(payload.url) || undefined;
+  const mode = normalizeString(payload.mode) === 'voice' ? 'voice' : 'manual';
+  const visitorId = normalizeString(payload.visitorId) || undefined;
+  const persistResult = Boolean(payload.persistResult);
+  const metadata = parseJsonObject(payload.metadata);
+
+  if (!question) {
+    return {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'question is required.',
+        retryable: false,
+      },
+    };
+  }
+
+  if (!claimText && !url) {
+    return {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Provide claimText or url so Cap has something concrete to verify.',
+        retryable: false,
+      },
+    };
+  }
+
+  if (url) {
+    try {
+      new URL(url);
+    } catch {
+      return {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'url must be a valid absolute URL.',
+          retryable: false,
+        },
+      };
+    }
+  }
+
+  return {
+    question,
+    claimText,
+    url,
+    mode,
+    visitorId,
+    metadata,
+    persistResult,
+  };
+}
+
+function tokenize(text: string) {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 2);
+}
+
+function uniqueTokens(tokens: string[]) {
+  return [...new Set(tokens)];
+}
+
+function hostnameOf(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function isCredibleDomain(domain: string) {
+  return (
+    domain.endsWith('.gov') ||
+    domain.endsWith('.edu') ||
+    domain.endsWith('.int') ||
+    CREDIBLE_DOMAINS.some((candidate) => domain === candidate || domain.endsWith(`.${candidate}`))
+  );
+}
+
+function looksFresh(text: string) {
+  return /(today|latest|recent|recently|currently|this week|just announced|breaking|newly|right now)/i.test(text);
+}
+
+function extractUrlContext(url?: string) {
+  if (!url) {
+    return { domain: '', pathTerms: '' };
+  }
+
+  try {
+    const parsed = new URL(url);
+    const pathTerms = parsed.pathname
+      .split('/')
+      .filter(Boolean)
+      .join(' ')
+      .replace(/[-_]/g, ' ')
+      .trim();
+
+    return {
+      domain: parsed.hostname.replace(/^www\./, ''),
+      pathTerms,
+    };
+  } catch {
+    return { domain: '', pathTerms: '' };
+  }
+}
+
+function buildNormalizedQuery(input: ParsedInput) {
+  const { domain, pathTerms } = extractUrlContext(input.url);
+  const pieces = [input.claimText, input.question, pathTerms].filter((value): value is string => Boolean(value?.trim()));
+
+  if (domain) {
+    pieces.push(`site:${domain}`);
+  }
+
+  return uniqueTokens(tokenize(pieces.join(' '))).join(' ').slice(0, 400);
+}
+
+function extractSnippet(result: FirecrawlResult) {
+  const candidate = [result.snippet, result.description, result.markdown]
+    .find((value) => typeof value === 'string' && value.trim().length > 0)
+    ?.replace(/\s+/g, ' ')
+    .trim();
+
+  return candidate ? candidate.slice(0, 240) : 'No summary available.';
+}
+
+function normalizeSources(results: FirecrawlResult[]): CapSource[] {
+  return results
+    .filter((result) => typeof result.url === 'string' && result.url.length > 0)
+    .slice(0, 3)
+    .map((result) => ({
+      title: result.title?.trim() || result.metadata?.title?.trim() || hostnameOf(result.url ?? '') || 'Source',
+      url: result.url as string,
+      snippet: extractSnippet(result),
+    }));
+}
+
+function buildSourceSignals(input: ParsedInput, results: FirecrawlResult[]) {
+  const combinedInput = [input.question, input.claimText].filter(Boolean).join(' ').toLowerCase();
+  const queryTokens = uniqueTokens(tokenize(combinedInput));
+  const sourceDomain = extractUrlContext(input.url).domain;
+
+  return results.map((result) => {
+    const url = result.url ?? result.metadata?.url ?? result.metadata?.sourceURL ?? '';
+    const domain = hostnameOf(url);
+    const text = [result.title, result.description, result.snippet, result.markdown]
+      .filter((value): value is string => typeof value === 'string')
+      .join(' ')
+      .toLowerCase();
+    const keywordMatches = queryTokens.filter((token) => text.includes(token)).length;
+    const contradiction = CONTRADICTION_TERMS.some((term) => text.includes(term));
+    const support = SUPPORT_TERMS.some((term) => text.includes(term));
+    const nuance = NUANCE_TERMS.some((term) => text.includes(term));
+    const credible = isCredibleDomain(domain);
+    const selfServing = Boolean(sourceDomain) && domain === sourceDomain;
+
+    let relevance = keywordMatches;
+    if (credible) relevance += 4;
+    if (support) relevance += 2;
+    if (contradiction) relevance += 3;
+    if (nuance) relevance += 1;
+    if (selfServing) relevance -= 2;
+
+    return {
+      contradiction,
+      credible,
+      nuance,
+      relevance,
+      result,
+      selfServing,
+      support,
+    };
+  });
+}
+
+function synthesizeVerdict(input: ParsedInput, results: FirecrawlResult[], normalizedQuery: string): CheckClaimResponse {
+  const signals = buildSourceSignals(input, results).sort((left, right) => right.relevance - left.relevance);
+  const rankedResults = signals.map((signal) => signal.result);
+  const topSources = normalizeSources(rankedResults);
+  const credibleCount = signals.filter((signal) => signal.credible).length;
+  const supportCount = signals.filter((signal) => signal.credible && signal.support).length;
+  const contradictionCount = signals.filter((signal) => signal.credible && signal.contradiction).length;
+  const nuanceCount = signals.filter((signal) => signal.credible && signal.nuance).length;
+  const selfServingCount = signals.filter((signal) => signal.selfServing).length;
+
+  let verdict: CapApiVerdict = 'UNVERIFIED';
+  let confidence = 30;
+  const reasons: string[] = [];
+
+  if (signals.length === 0 || credibleCount === 0) {
+    verdict = 'UNVERIFIED';
+    confidence = 24;
+    reasons.push('Cap did not find enough reliable sources to verify the claim confidently.');
+  } else if (
+    contradictionCount >= 2 ||
+    (contradictionCount >= 1 && supportCount === 0) ||
+    (selfServingCount >= 1 && credibleCount <= 1 && contradictionCount >= 1)
+  ) {
+    verdict = 'CAP';
+    confidence = clampConfidence(66 + contradictionCount * 9 + credibleCount * 4);
+    reasons.push('Multiple relevant sources push back on the claim instead of supporting it.');
+    if (selfServingCount > 0) {
+      reasons.push('Some support comes from the same domain tied to the claim, which weakens trust.');
+    }
+  } else if (supportCount >= 2 && contradictionCount === 0) {
+    verdict = 'NO_CAP';
+    confidence = clampConfidence(72 + supportCount * 8 + credibleCount * 4);
+    reasons.push('Several credible sources align with the core claim.');
+    reasons.push('The strongest results are not limited to a single self-interested source.');
+  } else if (nuanceCount > 0 || (supportCount > 0 && contradictionCount > 0)) {
+    verdict = 'HALF_CAP';
+    confidence = clampConfidence(52 + nuanceCount * 7 + credibleCount * 4);
+    reasons.push('The evidence points to a real signal, but the strongest sources add missing nuance.');
+    if (contradictionCount > 0) {
+      reasons.push('Some sources support part of the claim while others push back on the framing.');
+    }
+  } else if (supportCount === 1 && credibleCount >= 2) {
+    verdict = 'HALF_CAP';
+    confidence = clampConfidence(48 + credibleCount * 5);
+    reasons.push('Cap found some support, but the evidence is thinner than the claim suggests.');
+  } else {
+    verdict = 'UNVERIFIED';
+    confidence = clampConfidence(32 + credibleCount * 4);
+    reasons.push('The available evidence is too thin or too mixed to make a cleaner call.');
+  }
+
+  if (reasons.length === 0) {
+    reasons.push('Cap could not build a stronger explanation from the live evidence returned.');
+  }
+
+  const spokenPrefix = {
+    CAP: 'Cap',
+    NO_CAP: 'No cap',
+    HALF_CAP: 'Half cap',
+    UNVERIFIED: 'Unverified',
+  }[verdict];
+
+  return {
+    confidence,
+    normalizedQuery,
+    rawSearchSummary: `Sources reviewed: ${signals.length}. Credible: ${credibleCount}. Support: ${supportCount}. Contradictions: ${contradictionCount}.`,
+    reasons: reasons.slice(0, 3),
+    sources: topSources,
+    spokenSummary: `${spokenPrefix}: ${reasons[0]}`,
+    verdict,
+  };
+}
+
+async function callFirecrawl(input: ParsedInput, normalizedQuery: string) {
+  const payload: Record<string, unknown> = {
+    limit: 3,
+    query: normalizedQuery,
+    scrapeOptions: {
+      formats: ['markdown'],
+    },
+    sources: looksFresh(`${input.question} ${input.claimText ?? ''}`) ? ['web', 'news'] : ['web'],
+    timeout: 15000,
+  };
+
+  if (looksFresh(`${input.question} ${input.claimText ?? ''}`)) {
+    payload.tbs = 'sbd:1,qdr:w';
+  }
+
+  const response = await fetch('https://api.firecrawl.dev/v2/search', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${Deno.env.get('FIRECRAWL_API_KEY')}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    return {
+      error: {
+        code: response.status === 408 ? 'TIMEOUT' : 'UPSTREAM_ERROR',
+        message:
+          response.status === 408
+            ? 'Firecrawl timed out before Cap got enough evidence back.'
+            : 'Firecrawl search failed while Cap was gathering evidence.',
+        retryable: response.status >= 500 || response.status === 408,
+      },
+    } as CheckClaimError;
+  }
+
+  const payloadJson = (await response.json()) as FirecrawlPayload;
+  const results = [...(payloadJson.data?.web ?? []), ...(payloadJson.data?.news ?? [])].filter(Boolean);
+  return {
+    results,
+    warning: payloadJson.warning ?? null,
+  };
+}
+
+function buildSupabaseAdminClient() {
+  const url = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!url || !serviceRoleKey) {
+    return null;
+  }
+
+  return createClient(url, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
+
+function buildClaimTitle(input: ParsedInput) {
+  const seed = input.claimText || input.question || input.url || 'Cap check';
+  return seed.length > 96 ? `${seed.slice(0, 93)}...` : seed;
+}
+
+async function persistResult(input: ParsedInput, response: CheckClaimResponse) {
+  if (!input.persistResult || response.verdict === 'UNVERIFIED') {
+    return undefined;
+  }
+
+  const client = buildSupabaseAdminClient();
+  if (!client) {
+    return undefined;
+  }
+
+  const claimText = input.claimText || input.url || input.question;
+  const slug = createClaimSlug(claimText);
+  const existing = await client.from('claims').select('id').eq('slug', slug).maybeSingle();
+
+  if (existing.data?.id) {
+    return existing.data.id;
+  }
+
+  const { data } = await client
+    .from('claims')
+    .insert({
+      category: input.mode === 'voice' ? 'Voice Check' : 'Manual Check',
+      claim_text: claimText,
+      confidence: response.confidence,
+      details: response.spokenSummary,
+      is_featured: false,
+      reason_summary: response.reasons.join(' '),
+      slug,
+      source_url: input.url ?? response.sources[0]?.url ?? null,
+      sources: response.sources.map((source) => ({
+        name: source.title,
+        text: source.snippet,
+        url: source.url,
+      })),
+      status: 'draft',
+      title: buildClaimTitle(input),
+      verdict: toUiVerdict(response.verdict),
+    })
+    .select('id')
+    .single();
+
+  return data?.id;
+}
+
+async function logAnalytics(input: ParsedInput, response: CheckClaimResponse) {
+  if (!input.visitorId) {
+    return;
+  }
+
+  const client = buildSupabaseAdminClient();
+  if (!client) {
+    return;
+  }
+
+  await client.rpc('log_analytics_event', {
+    p_claim_id: response.persistedClaimId ?? null,
+    p_event_name: 'claim_checked',
+    p_metadata: {
+      confidence: response.confidence,
+      mode: input.mode,
+      normalizedQuery: response.normalizedQuery,
+      sourceCount: response.sources.length,
+      verdict: response.verdict,
+      ...(input.metadata ?? {}),
+    },
+    p_path: null,
+    p_ref: null,
+    p_ua: 'supabase-edge-function',
+    p_visitor_id: input.visitorId,
+  });
+}
+
+Deno.serve(async (request) => {
+  const origin = request.headers.get('origin');
+
+  if (request.method === 'OPTIONS') {
+    const headers = createCorsHeaders(origin);
+    return headers
+      ? new Response('ok', { headers })
+      : new Response('Origin not allowed.', { status: 403 });
+  }
+
+  if (request.method !== 'POST') {
+    return jsonResponse(
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Only POST requests are supported.',
+          retryable: false,
+        },
+      },
+      405,
+      origin,
+    );
+  }
+
+  const parsed = parseInput(await request.json().catch(() => null));
+  if ('error' in parsed) {
+    return jsonResponse(parsed, 400, origin);
+  }
+
+  const normalizedQuery = buildNormalizedQuery(parsed);
+  console.log('[check-claim] normalized query:', normalizedQuery);
+
+  const firecrawlResult = await callFirecrawl(parsed, normalizedQuery);
+  if ('error' in firecrawlResult) {
+    return jsonResponse(firecrawlResult, firecrawlResult.error.code === 'TIMEOUT' ? 408 : 502, origin);
+  }
+
+  const result = synthesizeVerdict(parsed, firecrawlResult.results, normalizedQuery);
+  if (result.sources.length === 0) {
+    result.reasons = ['Cap found too little reliable evidence to verify the claim cleanly.'];
+    result.verdict = 'UNVERIFIED';
+    result.confidence = 20;
+    result.spokenSummary = 'Unverified: Cap could not find enough reliable evidence to call this.';
+  }
+
+  const persistedClaimId = await persistResult(parsed, result);
+  const response: CheckClaimResponse = {
+    ...result,
+    persistedClaimId,
+  };
+
+  await logAnalytics(parsed, response);
+  return jsonResponse(response, 200, origin);
+});

@@ -12,7 +12,9 @@ export type AnalyticsEvent =
     | 'verdict_viewed'
     | 'laugh_clicked'
     | 'share_clicked'
-    | 'top_caps_viewed';
+    | 'top_caps_viewed'
+    | 'voice_session_started'
+    | 'voice_session_completed';
 
 interface EventMetadata {
     [key: string]: any;

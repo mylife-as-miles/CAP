@@ -6,10 +6,14 @@ import { Header, MobileNav } from '@/src/components/Navigation';
 import { LaughButton } from '@/src/components/LaughButton';
 import { MicOrb } from '@/src/components/MicOrb';
 import { TrendCard } from '@/src/components/TrendCard';
+import { useCapVoiceSession } from '@/src/hooks/useCapVoiceSession';
+import { buildErrorFallbackResponse, CapFunctionError, checkClaim } from '@/src/lib/capApi';
+import { buildResultViewFromCheck, buildResultViewFromClaim, type ResultViewModel } from '@/src/lib/resultView';
 import { supabase } from '@/src/lib/supabase';
 import { cn } from '@/src/lib/utils';
 import { getOrCreateVisitorId } from '@/src/lib/session';
 import { trackEvent, initAnalytics } from '@/src/lib/analytics';
+import { CAP_DEFAULT_QUESTION } from '@/shared/cap';
 
 type Screen = 'home' | 'listening' | 'checking' | 'results' | 'top' | 'history' | 'profile' | 'notifications' | 'trends';
 type ClaimTarget = 'featured' | string;
@@ -41,6 +45,37 @@ type ShareCardData = {
   shareTitle: string;
 };
 
+const RESULT_THEME = {
+  CAP: {
+    accent: 'text-primary',
+    badge: 'text-primary bg-primary/10',
+    border: 'border-primary',
+    borderGlow: 'shadow-[0_0_60px_-15px_rgba(226,36,31,0.3)]',
+    stripe: 'bg-primary-dim',
+  },
+  'NO CAP': {
+    accent: 'text-secondary',
+    badge: 'text-secondary bg-secondary/10',
+    border: 'border-secondary',
+    borderGlow: 'shadow-[0_0_60px_-15px_rgba(52,199,89,0.3)]',
+    stripe: 'bg-secondary',
+  },
+  'HALF CAP': {
+    accent: 'text-tertiary',
+    badge: 'text-tertiary bg-tertiary/10',
+    border: 'border-tertiary',
+    borderGlow: 'shadow-[0_0_60px_-15px_rgba(255,204,0,0.2)]',
+    stripe: 'bg-tertiary',
+  },
+  UNVERIFIED: {
+    accent: 'text-outline',
+    badge: 'text-outline bg-white/10',
+    border: 'border-white/20',
+    borderGlow: 'shadow-[0_0_60px_-15px_rgba(255,255,255,0.12)]',
+    stripe: 'bg-white/20',
+  },
+} as const;
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [inputValue, setInputValue] = useState('');
@@ -66,6 +101,11 @@ export default function App() {
   const [featuredCap, setFeaturedCap] = useState<Claim | null>(null);
   const [topCapsData, setTopCapsData] = useState<Claim[]>([]);
   const [expandedCards, setExpandedCards] = useState<string[]>([]);
+  const [activeResult, setActiveResult] = useState<ResultViewModel | null>(null);
+  const [activeCheckLabel, setActiveCheckLabel] = useState('');
+  const [isCheckingLive, setIsCheckingLive] = useState(false);
+  const visitorIdRef = useRef(getOrCreateVisitorId());
+  const activeConversationIdRef = useRef<string | null>(null);
 
   const fetchClaims = async () => {
     try {
@@ -125,6 +165,126 @@ export default function App() {
     toastTimeoutRef.current = window.setTimeout(() => setShowNotificationToast(null), 3000);
   };
 
+  const resetResultFlags = () => {
+    setShareCardData(null);
+    setIsShared(false);
+    setIsAddedToTopCaps(false);
+    setIsFlagged(false);
+  };
+
+  const runClaimCheck = async (
+    question: string,
+    options: {
+      claimText?: string;
+      url?: string;
+      mode: 'voice' | 'manual';
+      metadata?: Record<string, unknown>;
+    },
+  ) => {
+    const displayText = options.claimText || options.url || question;
+    const startedAt = Date.now();
+
+    resetResultFlags();
+    setActiveResult(null);
+    setActiveCheckLabel(displayText);
+    setIsCheckingLive(true);
+    setScreen('checking');
+
+    try {
+      const response = await checkClaim({
+        question,
+        claimText: options.claimText,
+        metadata: options.metadata,
+        mode: options.mode,
+        persistResult: false,
+        url: options.url,
+        visitorId: visitorIdRef.current,
+      });
+
+      setActiveResult(buildResultViewFromCheck(displayText, response, Date.now() - startedAt));
+      setScreen('results');
+      trackEvent('verdict_viewed', response.persistedClaimId, {
+        mode: options.mode,
+        verdict: response.verdict,
+      });
+      return response;
+    } catch (error) {
+      const message = error instanceof CapFunctionError
+        ? error.message
+        : 'Cap hit an unexpected error while checking this.';
+      const fallback = buildErrorFallbackResponse(message);
+      setActiveResult(buildResultViewFromCheck(displayText, fallback, Date.now() - startedAt));
+      setScreen('results');
+      showToast(message);
+      return fallback;
+    } finally {
+      setIsCheckingLive(false);
+    }
+  };
+
+  const openStoredClaimResult = (claim: Claim) => {
+    resetResultFlags();
+    setActiveCheckLabel(claim.claim_text);
+    setActiveResult(buildResultViewFromClaim(claim));
+    setScreen('results');
+  };
+
+  const openSampleTrendResult = (claimText: string) => {
+    resetResultFlags();
+    setActiveCheckLabel(claimText);
+    setActiveResult(buildResultViewFromCheck(claimText, {
+      verdict: 'CAP',
+      confidence: 78,
+      spokenSummary: 'Cap: the claim overstates what the strongest sources actually support.',
+      reasons: [
+        'The strongest sources add caveats that the headline leaves out.',
+        'Cap found evidence, but not enough to support the claim as stated.',
+      ],
+      sources: [
+        {
+          title: 'Reuters',
+          url: 'https://www.reuters.com/',
+          snippet: 'Background reporting suggests the viral framing is stronger than the underlying evidence.',
+        },
+        {
+          title: 'AP News',
+          url: 'https://apnews.com/',
+          snippet: 'Independent coverage adds context that weakens the clean version of the claim.',
+        },
+      ],
+    }, 0));
+    setScreen('results');
+  };
+
+  const {
+    endVoiceSession,
+    startVoiceSession,
+    status: voiceStatus,
+  } = useCapVoiceSession({
+    visitorId: visitorIdRef.current,
+    onCheckClaim: async (input) => {
+      return runClaimCheck(input.question, {
+        claimText: input.claimText,
+        metadata: input.metadata,
+        mode: 'voice',
+        url: input.url,
+      });
+    },
+    onDisconnect: () => {
+      if (activeConversationIdRef.current) {
+        trackEvent('voice_session_completed', undefined, {
+          conversationId: activeConversationIdRef.current,
+        });
+      }
+
+      activeConversationIdRef.current = null;
+      setScreen((currentScreen) => (currentScreen === 'listening' ? 'home' : currentScreen));
+    },
+    onError: (message) => {
+      showToast(message);
+    },
+  });
+
   const triggerLaughCelebration = (target: ClaimTarget) => {
     const celebrationKey = target === 'featured' ? 'featured' : `leaderboard-${target}`;
     setLaughCelebrations((prev) => ({
@@ -135,18 +295,18 @@ export default function App() {
 
   const buildClaimShareCard = (claim: Claim): ShareCardData => ({
     footer: 'Pulled from CAP\'s live leaderboard.',
-    shareText: `CAP\n"${claim.claim_text}"`,
+    shareText: `${claim.verdict}\n"${claim.claim_text}"`,
     shareTitle: 'CAP',
   });
 
   const openResultShareCard = () => {
+    if (!activeResult) {
+      return;
+    }
+
     setIsShared(false);
-    trackEvent('share_clicked', undefined, { source: 'result_screen' });
-    setShareCardData({
-      footer: 'Checked with Firecrawl. Spoken by Cap on 11Labs.',
-      shareText: 'CAP\n"The headline overstates what the sources actually support."',
-      shareTitle: 'CAP',
-    });
+    trackEvent('share_clicked', activeResult.claimId, { source: 'result_screen' });
+    setShareCardData(activeResult.share);
   };
 
   const openClaimShareCard = async (target: ClaimTarget) => {
@@ -316,8 +476,33 @@ export default function App() {
     return num >= 1000 ? (num / 1000).toFixed(1) + 'k' : num.toString();
   };
 
-  const handleMicClick = () => {
-    if (screen === 'home') setScreen('listening');
+  const handleNavigate = (nextScreen: string) => {
+    if (voiceStatus !== 'disconnected' && nextScreen !== 'listening') {
+      void endVoiceSession();
+    }
+    setScreen(nextScreen as Screen);
+  };
+
+  const handleMicClick = async () => {
+    if (screen !== 'home' || isCheckingLive) {
+      return;
+    }
+
+    resetResultFlags();
+    setActiveResult(null);
+    setActiveCheckLabel('');
+    setInputError(null);
+    setScreen('listening');
+
+    try {
+      const conversationId = await startVoiceSession();
+      activeConversationIdRef.current = conversationId;
+      trackEvent('voice_session_started', undefined, { conversationId });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Cap could not start the voice session.';
+      showToast(message);
+      setScreen('home');
+    }
   };
 
   const isValidUrl = (string: string) => {
@@ -329,7 +514,7 @@ export default function App() {
     }
   };
 
-  const handleCheck = () => {
+  const handleCheck = async () => {
     setInputError(null);
     if (!inputValue.trim()) {
       setInputError("Please enter a URL to check.");
@@ -339,8 +524,18 @@ export default function App() {
       setInputError("Invalid URL. Please paste a valid link (e.g., https://example.com).");
       return;
     }
-    trackEvent('claim_checked', undefined, { input: inputValue });
-    setScreen('checking');
+
+    if (voiceStatus !== 'disconnected') {
+      await endVoiceSession();
+    }
+
+    await runClaimCheck(CAP_DEFAULT_QUESTION, {
+      mode: 'manual',
+      url: inputValue.trim(),
+      metadata: {
+        input: inputValue.trim(),
+      },
+    });
   };
 
   const copyTextToClipboard = async (text: string) => {
@@ -421,6 +616,29 @@ export default function App() {
     setIsAddedToTopCaps(true);
   };
 
+  const handleCheckAnother = async () => {
+    if (voiceStatus !== 'disconnected') {
+      await endVoiceSession();
+    }
+
+    activeConversationIdRef.current = null;
+    setScreen('home');
+    setInputError(null);
+    setInputValue('');
+    setActiveCheckLabel('');
+    setActiveResult(null);
+    resetResultFlags();
+  };
+
+  const handleCancelListening = async () => {
+    if (voiceStatus !== 'disconnected') {
+      await endVoiceSession();
+    }
+
+    activeConversationIdRef.current = null;
+    setScreen('home');
+  };
+
   useEffect(() => {
     return () => {
       if (toastTimeoutRef.current) {
@@ -429,20 +647,12 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (screen === 'listening') {
-      const timer = setTimeout(() => setScreen('checking'), 3000);
-      return () => clearTimeout(timer);
-    }
-    if (screen === 'checking') {
-      const timer = setTimeout(() => setScreen('results'), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [screen]);
+  const resultView = activeResult;
+  const resultTheme = resultView ? RESULT_THEME[resultView.verdict] : RESULT_THEME.CAP;
 
   return (
     <div className="min-h-screen bg-background selection:bg-primary selection:text-black">
-      <Header activeTab={screen} onNavigate={setScreen} />
+      <Header activeTab={screen === 'results' || screen === 'listening' || screen === 'checking' ? 'home' : screen} onNavigate={handleNavigate} />
 
       <AnimatePresence>
         {showNotificationToast && (
@@ -574,9 +784,9 @@ export default function App() {
                         time={new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ago'}
                         claim={item.claim_text}
                         stats={`${formatNumber(item.claim_metrics.view_count)} views`}
-                        onClick={() => {
-                          handleViewClaim(item.id);
-                          setScreen('results');
+                        onClick={async () => {
+                          await handleViewClaim(item.id);
+                          openStoredClaimResult(item);
                         }}
                         onBadgeClick={(e) => {
                           e.stopPropagation();
@@ -607,7 +817,7 @@ export default function App() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-secondary"></span>
                   </span>
-                  Listening...
+                  {voiceStatus === 'connecting' ? 'Connecting...' : 'Listening...'}
                 </span>
               </div>
 
@@ -642,7 +852,7 @@ export default function App() {
               </div>
 
               <button
-                onClick={() => setScreen('home')}
+                onClick={handleCancelListening}
                 className="mt-20 group flex flex-col items-center gap-2 text-outline hover:text-primary transition-all duration-300"
               >
                 <div className="w-12 h-12 rounded-full border border-white/10 flex items-center justify-center group-hover:border-primary/50 group-hover:bg-primary/10">
@@ -667,7 +877,7 @@ export default function App() {
                   <span className="font-label text-xs tracking-widest uppercase text-outline">Verifying Claim</span>
                 </div>
                 <h1 className="font-headline text-2xl sm:text-4xl md:text-6xl font-black tracking-tighter uppercase leading-none text-white">
-                  "{inputValue || "The 2024 economic projections suggest a 40% decrease in consumer spending."}"
+                  "{activeCheckLabel || inputValue || "The 2024 economic projections suggest a 40% decrease in consumer spending."}"
                 </h1>
               </div>
 
@@ -767,119 +977,137 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="w-full max-w-7xl mx-auto relative"
             >
-              <section className="flex flex-col items-center text-center mb-16">
-                <div className="relative w-full max-w-4xl bg-surface rounded-2xl md:rounded-3xl overflow-hidden border-l-[4px] border-primary shadow-[0_0_60px_-15px_rgba(226,36,31,0.3)]">
-                  <div className="p-6 sm:p-8 md:p-16 flex flex-col items-center">
-                    <div className="flex items-center gap-3 mb-6">
-                      <span className="font-label text-xs uppercase tracking-[0.2em] text-primary bg-primary/10 px-3 py-1 rounded-full">Confidence: High</span>
-                      <span className="font-label text-xs uppercase tracking-[0.2em] text-outline">Ref ID: 8821-X</span>
-                    </div>
-                    <div className="flex items-center justify-center gap-2 sm:gap-4 mb-4 relative group">
-                      <h1 className="font-headline text-[56px] sm:text-[80px] md:text-[140px] leading-none font-black text-primary uppercase italic tracking-tighter">CAP</h1>
-                      <div className="relative cursor-help mt-2 sm:mt-4 md:mt-8">
-                        <Info size={24} className="text-outline group-hover:text-primary transition-colors sm:w-8 sm:h-8" />
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-64 p-4 bg-surface-high border border-white/10 rounded-2xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                          <p className="font-body text-sm text-white normal-case not-italic text-left font-normal">
-                            Flagged as CAP due to significant contradictions with official documentation and verified pricing data.
-                          </p>
-                          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-surface-high border-b border-r border-white/10 rotate-45"></div>
+              {resultView ? (
+                <>
+                  <section className="flex flex-col items-center text-center mb-16">
+                    <div className={cn(
+                      'relative w-full max-w-4xl bg-surface rounded-2xl md:rounded-3xl overflow-hidden border-l-[4px]',
+                      resultTheme.border,
+                      resultTheme.borderGlow,
+                    )}>
+                      <div className="p-6 sm:p-8 md:p-16 flex flex-col items-center">
+                        <div className="flex items-center gap-3 mb-6">
+                          <span className={cn('font-label text-xs uppercase tracking-[0.2em] px-3 py-1 rounded-full', resultTheme.badge)}>
+                            Confidence: {resultView.confidenceLabel}
+                          </span>
+                          <span className="font-label text-xs uppercase tracking-[0.2em] text-outline">
+                            Ref ID: {resultView.meta.refId}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-center gap-2 sm:gap-4 mb-4 relative group">
+                          <h1 className={cn(
+                            'font-headline text-[56px] sm:text-[80px] md:text-[140px] leading-none font-black uppercase italic tracking-tighter',
+                            resultTheme.accent,
+                          )}>
+                            {resultView.verdict}
+                          </h1>
+                          <div className="relative cursor-help mt-2 sm:mt-4 md:mt-8">
+                            <Info size={24} className={cn('transition-colors sm:w-8 sm:h-8', resultTheme.accent)} />
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-64 p-4 bg-surface-high border border-white/10 rounded-2xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                              <p className="font-body text-sm text-white normal-case not-italic text-left font-normal">
+                                {resultView.verdictExplanation}
+                              </p>
+                              <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-surface-high border-b border-r border-white/10 rotate-45"></div>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="font-headline text-lg sm:text-2xl md:text-3xl text-white max-w-2xl font-bold leading-tight italic mb-4 sm:mb-8">
+                          "{resultView.summary}"
+                        </p>
+                        <div className="h-10 flex items-center justify-center gap-1.5 w-full max-w-sm opacity-60">
+                          {[3, 5, 8, 4, 7, 3, 8, 6, 3, 7, 4, 2, 5, 7, 4, 8, 3, 6, 4, 3, 6, 8, 5, 4].map((h, i) => (
+                            <motion.div
+                              key={i}
+                              animate={{ height: [h * 2, h * 4, h * 2] }}
+                              transition={{ duration: 0.4 + (i % 3) * 0.1, repeat: Infinity, delay: i * 0.05 }}
+                              className={cn(
+                                'w-1 rounded-full',
+                                i % 4 === 0 ? resultTheme.stripe : i % 4 === 1 ? 'bg-secondary' : i % 4 === 2 ? 'bg-tertiary' : 'bg-primary-dim',
+                              )}
+                            />
+                          ))}
                         </div>
                       </div>
                     </div>
-                    <p className="font-headline text-lg sm:text-2xl md:text-3xl text-white max-w-2xl font-bold leading-tight italic mb-4 sm:mb-8">
-                      "The headline overstates what the sources actually support."
-                    </p>
-                    <div className="h-10 flex items-center justify-center gap-1.5 w-full max-w-sm opacity-60">
-                      {[3, 5, 8, 4, 7, 3, 8, 6, 3, 7, 4, 2, 5, 7, 4, 8, 3, 6, 4, 3, 6, 8, 5, 4].map((h, i) => (
-                        <motion.div
-                          key={i}
-                          animate={{ height: [h * 2, h * 4, h * 2] }}
-                          transition={{ duration: 0.4 + (i % 3) * 0.1, repeat: Infinity, delay: i * 0.05 }}
-                          className={cn(
-                            "w-1 rounded-full",
-                            i % 4 === 0 ? "bg-primary" : i % 4 === 1 ? "bg-secondary" : i % 4 === 2 ? "bg-tertiary" : "bg-primary-dim"
-                          )}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </section>
+                  </section>
 
-              <section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-10 md:mb-16">
-                <div className="md:col-span-2 space-y-6">
-                  <h3 className="font-headline text-xl uppercase tracking-widest text-outline mb-4 flex items-center gap-2">
-                    <span className="w-8 h-[1px] bg-outline"></span>
-                    Discrepancy Analysis
-                  </h3>
-                  {[
-                    { id: '01', title: 'Official Documentation Gap', text: 'The original claim cites "Section 4.2" of the 2023 Federal Registry, but that section exclusively discusses agricultural subsidies, not urban development grants.' },
-                    { id: '02', title: 'Pricing Page Contradiction', text: 'The "Unlimit" plan mentioned in the leak is listed on the public pricing page as a deprecated enterprise-only tier with a $5,000 minimum spend, contradicting the "free for all" claim.' }
-                  ].map(item => (
-                    <div key={item.id} className="bg-surface-high p-5 sm:p-8 rounded-2xl md:rounded-3xl relative overflow-hidden group">
-                      <div className="absolute left-0 top-0 w-1 h-full bg-primary-dim opacity-40"></div>
-                      <div className="flex gap-6 items-start">
-                        <span className="font-label text-primary text-xl font-bold">{item.id}</span>
-                        <div>
-                          <h4 className="font-headline text-lg font-bold mb-2 uppercase text-white">{item.title}</h4>
-                          <p className="text-outline font-body leading-relaxed">{item.text}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="bg-surface-high p-5 sm:p-8 rounded-2xl md:rounded-3xl flex flex-col justify-between">
-                  <div>
-                    <h3 className="font-headline text-xl uppercase tracking-widest text-outline mb-8">Metadata</h3>
-                    <div className="space-y-6">
-                      {[
-                        { label: 'Source Count', value: '14 Verified' },
-                        { label: 'Audit Speed', value: '1.2 Seconds' },
-                        { label: 'Last Checked', value: 'Today 14:21' }
-                      ].map(stat => (
-                        <div key={stat.label} className="flex justify-between items-end border-b border-white/10 pb-2">
-                          <span className="font-label text-xs uppercase text-outline">{stat.label}</span>
-                          <span className="font-headline font-bold text-lg italic">{stat.value}</span>
+                  <section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-10 md:mb-16">
+                    <div className="md:col-span-2 space-y-6">
+                      <h3 className="font-headline text-xl uppercase tracking-widest text-outline mb-4 flex items-center gap-2">
+                        <span className="w-8 h-[1px] bg-outline"></span>
+                        Discrepancy Analysis
+                      </h3>
+                      {resultView.analysisCards.map((item) => (
+                        <div key={item.id} className="bg-surface-high p-5 sm:p-8 rounded-2xl md:rounded-3xl relative overflow-hidden group">
+                          <div className={cn('absolute left-0 top-0 w-1 h-full opacity-40', resultTheme.stripe)}></div>
+                          <div className="flex gap-6 items-start">
+                            <span className={cn('font-label text-xl font-bold', resultTheme.accent)}>{item.id}</span>
+                            <div>
+                              <h4 className="font-headline text-lg font-bold mb-2 uppercase text-white">{item.title}</h4>
+                              <p className="text-outline font-body leading-relaxed">{item.text}</p>
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  </div>
-                  <div className="mt-8 pt-8 border-t border-white/10">
-                    <p className="text-xs font-label text-outline uppercase leading-relaxed">
-                      This report was generated using the CAP-ORACLE V3 model using cross-referenced editorial veracity datasets.
-                    </p>
-                  </div>
-                </div>
-              </section>
 
-              <section className="mb-16 md:mb-24">
-                <h3 className="font-headline text-xl uppercase tracking-widest text-outline mb-8 flex items-center gap-2">
-                  <span className="w-8 h-[1px] bg-outline"></span>
-                  Top 3 Influential Sources
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {[
-                    { name: 'Federal Archives', url: 'https://archives.gov/budget/2024', text: '"...there is no mention of the proposed budget allocation for the fiscal year 2024 within the specified legislative docket..."' },
-                    { name: 'Web Standards Org', url: 'https://w3c.org/protocols/drafts', text: '"The protocol referenced in the article (V-HTT-9) does not exist in the current working drafts of the HTTP steering committee."' },
-                    { name: 'Stat-Check.org', url: 'https://stat-check.org/reports/2023', text: '"Historical data for the period 2018-2022 shows a maximum growth rate of 4%, not the 14% claimed in the viral post."' }
-                  ].map((source, i) => (
-                    <a key={i} href={source.url} target="_blank" rel="noopener noreferrer" className="bg-surface p-6 rounded-3xl hover:bg-surface-high transition-all group border border-transparent hover:border-white/10 flex flex-col h-full">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center overflow-hidden">
-                          <div className="w-6 h-6 bg-white/20 rounded-full" />
+                    <div className="bg-surface-high p-5 sm:p-8 rounded-2xl md:rounded-3xl flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-headline text-xl uppercase tracking-widest text-outline mb-8">Metadata</h3>
+                        <div className="space-y-6">
+                          {[
+                            { label: 'Source Count', value: resultView.meta.sourceCount },
+                            { label: 'Audit Speed', value: resultView.meta.auditSpeed },
+                            { label: 'Last Checked', value: resultView.meta.lastChecked },
+                          ].map((stat) => (
+                            <div key={stat.label} className="flex justify-between items-end border-b border-white/10 pb-2">
+                              <span className="font-label text-xs uppercase text-outline">{stat.label}</span>
+                              <span className="font-headline font-bold text-lg italic">{stat.value}</span>
+                            </div>
+                          ))}
                         </div>
-                        <ExternalLink size={18} className="text-outline group-hover:text-primary transition-colors" />
                       </div>
-                      <h5 className="font-headline font-bold text-white mb-2 truncate uppercase tracking-tighter group-hover:text-primary transition-colors">{source.name}</h5>
-                      <p className="text-sm text-outline line-clamp-4 font-body flex-grow">{source.text}</p>
-                      <div className="mt-4 pt-4 border-t border-white/5 font-mono text-[10px] text-outline/50 truncate">
-                        {source.url}
+                      <div className="mt-8 pt-8 border-t border-white/10">
+                        <p className="text-xs font-label text-outline uppercase leading-relaxed">
+                          {resultView.meta.reportNote}
+                        </p>
                       </div>
-                    </a>
-                  ))}
-                </div>
-              </section>
+                    </div>
+                  </section>
+
+                  <section className="mb-16 md:mb-24">
+                    <h3 className="font-headline text-xl uppercase tracking-widest text-outline mb-8 flex items-center gap-2">
+                      <span className="w-8 h-[1px] bg-outline"></span>
+                      {resultView.sources.length > 0 ? `Top ${Math.min(resultView.sources.length, 3)} Influential Sources` : 'Influential Sources'}
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {resultView.sources.length > 0 ? resultView.sources.map((source, i) => (
+                        <a key={i} href={source.url} target="_blank" rel="noopener noreferrer" className="bg-surface p-6 rounded-3xl hover:bg-surface-high transition-all group border border-transparent hover:border-white/10 flex flex-col h-full">
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center overflow-hidden">
+                              <div className="w-6 h-6 bg-white/20 rounded-full" />
+                            </div>
+                            <ExternalLink size={18} className="text-outline group-hover:text-primary transition-colors" />
+                          </div>
+                          <h5 className="font-headline font-bold text-white mb-2 truncate uppercase tracking-tighter group-hover:text-primary transition-colors">{source.name}</h5>
+                          <p className="text-sm text-outline line-clamp-4 font-body flex-grow">{source.text}</p>
+                          <div className="mt-4 pt-4 border-t border-white/5 font-mono text-[10px] text-outline/50 truncate">
+                            {source.url}
+                          </div>
+                        </a>
+                      )) : (
+                        <div className="md:col-span-3 bg-surface border border-dashed border-white/10 p-8 rounded-3xl text-center text-outline">
+                          Cap did not find enough strong source text to populate source cards for this check.
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                </>
+              ) : (
+                <section className="bg-surface border border-dashed border-white/10 p-12 rounded-3xl text-center text-outline mb-16">
+                  Cap does not have a result loaded yet.
+                </section>
+              )}
 
               <div className="fixed bottom-0 left-0 w-full z-40 px-3 sm:px-6 pb-20 md:pb-12 pt-8 md:pt-12 bg-gradient-to-t from-background via-background/90 to-transparent pointer-events-none">
                 <div className="w-full max-w-7xl mx-auto grid grid-cols-2 sm:flex sm:flex-row sm:flex-nowrap gap-2 sm:gap-4 justify-center items-center pointer-events-auto">
@@ -918,12 +1146,7 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => {
-                      setScreen('home');
-                      setInputValue('');
-                      setShareCardData(null);
-                      setIsShared(false);
-                      setIsAddedToTopCaps(false);
-                      setIsFlagged(false);
+                      void handleCheckAnother();
                     }}
                     className="col-span-2 sm:col-span-1 px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm bg-white text-black font-headline font-black uppercase tracking-widest rounded-full hover:opacity-90 transition-all flex items-center justify-center gap-2 sm:gap-3 active:scale-95 whitespace-nowrap"
                   >
@@ -1334,7 +1557,7 @@ export default function App() {
                   time="2h ago"
                   claim="Drinking 4L of salt water cures all winter fatigue instantly."
                   stats="842 researchers checked"
-                  onClick={() => setScreen('results')}
+                  onClick={() => openSampleTrendResult('Drinking 4L of salt water cures all winter fatigue instantly.')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
                 <TrendCard
@@ -1343,7 +1566,7 @@ export default function App() {
                   time="5h ago"
                   claim="New housing starts in the metro area hit a 10-year high this June."
                   stats="1.2k sources verified"
-                  onClick={() => setScreen('results')}
+                  onClick={() => openSampleTrendResult('New housing starts in the metro area hit a 10-year high this June.')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
                 <TrendCard
@@ -1352,7 +1575,7 @@ export default function App() {
                   time="12h ago"
                   claim="The new AI model is 400% more efficient at coding than last year."
                   stats="Nuanced breakdown inside"
-                  onClick={() => setScreen('results')}
+                  onClick={() => openSampleTrendResult('The new AI model is 400% more efficient at coding than last year.')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
                 <TrendCard
@@ -1361,7 +1584,7 @@ export default function App() {
                   time="1d ago"
                   claim="Eating raw onions before bed prevents all seasonal allergies."
                   stats="5.3k researchers checked"
-                  onClick={() => setScreen('results')}
+                  onClick={() => openSampleTrendResult('Eating raw onions before bed prevents all seasonal allergies.')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
                 <TrendCard
@@ -1370,7 +1593,7 @@ export default function App() {
                   time="1d ago"
                   claim="Astronomers discover a new exoplanet with water vapor in its atmosphere."
                   stats="890 sources verified"
-                  onClick={() => setScreen('results')}
+                  onClick={() => openSampleTrendResult('Astronomers discover a new exoplanet with water vapor in its atmosphere.')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
                 <TrendCard
@@ -1379,7 +1602,7 @@ export default function App() {
                   time="2d ago"
                   claim="New legislation will ban all gas-powered vehicles by 2028."
                   stats="Nuanced breakdown inside"
-                  onClick={() => setScreen('results')}
+                  onClick={() => openSampleTrendResult('New legislation will ban all gas-powered vehicles by 2028.')}
                   onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
                 />
               </div>
@@ -1467,7 +1690,7 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      <MobileNav activeTab={screen === 'results' || screen === 'listening' || screen === 'checking' ? 'home' : screen} onNavigate={setScreen} />
+      <MobileNav activeTab={screen === 'results' || screen === 'listening' || screen === 'checking' ? 'home' : screen} onNavigate={handleNavigate} />
     </div>
   );
 }

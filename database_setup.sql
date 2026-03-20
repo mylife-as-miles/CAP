@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS public.analytics_events (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     visitor_id TEXT NOT NULL REFERENCES public.app_visitors(visitor_id) ON DELETE CASCADE,
     event_name TEXT NOT NULL CHECK (
-        event_name IN ('session_started', 'claim_checked', 'verdict_viewed', 'laugh_clicked', 'share_clicked', 'top_caps_viewed')
+        event_name IN ('session_started', 'claim_checked', 'verdict_viewed', 'laugh_clicked', 'share_clicked', 'top_caps_viewed', 'voice_session_started', 'voice_session_completed')
     ),
     claim_id UUID REFERENCES public.claims(id) ON DELETE SET NULL,
     metadata JSONB DEFAULT '{}'::jsonb,
@@ -170,6 +170,23 @@ SET
     metadata = COALESCE(metadata, '{}'::jsonb),
     created_at = COALESCE(created_at, NOW())
 WHERE metadata IS NULL OR created_at IS NULL;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'analytics_events_event_name_check'
+          AND conrelid = 'public.analytics_events'::regclass
+    ) THEN
+        ALTER TABLE public.analytics_events DROP CONSTRAINT analytics_events_event_name_check;
+    END IF;
+END $$;
+
+ALTER TABLE public.analytics_events
+ADD CONSTRAINT analytics_events_event_name_check CHECK (
+    event_name IN ('session_started', 'claim_checked', 'verdict_viewed', 'laugh_clicked', 'share_clicked', 'top_caps_viewed', 'voice_session_started', 'voice_session_completed')
+);
 
 -- 3. INDEXES & CONSTRAINTS
 CREATE INDEX IF NOT EXISTS idx_interactions_lookup ON public.claim_interactions (claim_id, visitor_id, interaction_type);
