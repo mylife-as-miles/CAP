@@ -3,11 +3,23 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Search, X, Check, ExternalLink, Share2, Star, RefreshCw, Info, Flag, Flame, Camera, Filter, ArrowUpDown, ChevronDown, ChevronUp, Bell, BellRing, Download } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { Header, MobileNav } from '@/src/components/Navigation';
+import { LaughButton } from '@/src/components/LaughButton';
 import { MicOrb } from '@/src/components/MicOrb';
 import { TrendCard } from '@/src/components/TrendCard';
 import { cn } from '@/src/lib/utils';
 
 type Screen = 'home' | 'listening' | 'checking' | 'results' | 'top' | 'history' | 'profile' | 'notifications' | 'trends';
+type ClaimTarget = 'featured' | number;
+
+type ShareCardData = {
+  badge: string;
+  category?: string;
+  footer: string;
+  quote: string;
+  shareText: string;
+  shareTitle: string;
+  title: string;
+};
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -16,9 +28,11 @@ export default function App() {
   const [isShared, setIsShared] = useState(false);
   const [isAddedToTopCaps, setIsAddedToTopCaps] = useState(false);
   const [isFlagged, setIsFlagged] = useState(false);
-  const [showShareCard, setShowShareCard] = useState(false);
+  const [shareCardData, setShareCardData] = useState<ShareCardData | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const shareCardRef = useRef<HTMLDivElement>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
+  const [laughCelebrations, setLaughCelebrations] = useState<Record<string, number>>({});
 
   const [topCapsSortBy, setTopCapsSortBy] = useState<'Shares' | 'Laughed At' | 'Date Added'>('Shares');
   const [topCapsFilterCategory, setTopCapsFilterCategory] = useState<string>('All');
@@ -26,6 +40,14 @@ export default function App() {
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
   const [showNotificationToast, setShowNotificationToast] = useState<string | null>(null);
+  const [featuredCap, setFeaturedCap] = useState({
+    claim: "The moon landing was faked using early CGI from a time-traveling James Cameron.",
+    category: 'Science',
+    details:
+      "James Cameron was 14 years old during the 1969 moon landing. The CGI required to fake that footage also did not exist until much later.",
+    laughedAt: 42800,
+    shares: 12000,
+  });
 
   const [topCapsData, setTopCapsData] = useState([
     {
@@ -119,9 +141,72 @@ export default function App() {
 
   const [expandedCards, setExpandedCards] = useState<number[]>([]);
 
-  const handleLaugh = (e: React.MouseEvent, id: number) => {
+  const showToast = (message: string) => {
+    setShowNotificationToast(message);
+    if (toastTimeoutRef.current) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
+    toastTimeoutRef.current = window.setTimeout(() => setShowNotificationToast(null), 3000);
+  };
+
+  const triggerLaughCelebration = (target: ClaimTarget) => {
+    const celebrationKey = target === 'featured' ? 'featured' : `leaderboard-${target}`;
+    setLaughCelebrations((prev) => ({
+      ...prev,
+      [celebrationKey]: (prev[celebrationKey] ?? 0) + 1,
+    }));
+  };
+
+  const buildClaimShareCard = (claim: { category: string; claim: string; laughedAt: number; shares: number }): ShareCardData => ({
+    badge: 'Hall of Shame',
+    category: claim.category,
+    footer: 'Pulled from CAP\'s live leaderboard.',
+    quote: `"${claim.claim}"`,
+    shareText: `Top CAP in ${claim.category}: "${claim.claim}"\n${formatNumber(claim.laughedAt)} laughs and ${formatNumber(claim.shares)} shares on CAP.`,
+    shareTitle: `Top CAP: ${claim.category}`,
+    title: 'TOP CAP',
+  });
+
+  const openResultShareCard = () => {
+    setIsShared(false);
+    setShareCardData({
+      badge: '99% Confidence',
+      footer: 'Checked with Firecrawl. Spoken by Cap on 11Labs.',
+      quote: '"The headline overstates what the sources actually support."',
+      shareText: 'CAP verdict: "The headline overstates what the sources actually support."',
+      shareTitle: 'CAP Verdict',
+      title: 'CAP',
+    });
+  };
+
+  const openClaimShareCard = (target: ClaimTarget) => {
+    setIsShared(false);
+
+    if (target === 'featured') {
+      const updatedFeaturedCap = { ...featuredCap, shares: featuredCap.shares + 1 };
+      setFeaturedCap(updatedFeaturedCap);
+      setShareCardData(buildClaimShareCard(updatedFeaturedCap));
+      return;
+    }
+
+    const currentClaim = topCapsData.find((item) => item.id === target);
+    if (!currentClaim) return;
+
+    const updatedClaim = { ...currentClaim, shares: currentClaim.shares + 1 };
+    setTopCapsData((prev) => prev.map((item) => (item.id === target ? updatedClaim : item)));
+    setShareCardData(buildClaimShareCard(updatedClaim));
+  };
+
+  const handleLaugh = (e: React.MouseEvent, target: ClaimTarget) => {
     e.stopPropagation();
-    setTopCapsData(prev => prev.map(item => item.id === id ? { ...item, laughedAt: item.laughedAt + 1 } : item));
+    triggerLaughCelebration(target);
+
+    if (target === 'featured') {
+      setFeaturedCap((prev) => ({ ...prev, laughedAt: prev.laughedAt + 1 }));
+      return;
+    }
+
+    setTopCapsData((prev) => prev.map((item) => (item.id === target ? { ...item, laughedAt: item.laughedAt + 1 } : item)));
   };
 
   const toggleExpand = (id: number) => {
@@ -133,12 +218,10 @@ export default function App() {
     setFollowedCategories(prev => {
       const isFollowing = prev.includes(category);
       if (isFollowing) {
-        setShowNotificationToast(`Unfollowed ${category}`);
-        setTimeout(() => setShowNotificationToast(null), 3000);
+        showToast(`Unfollowed ${category}`);
         return prev.filter(c => c !== category);
       } else {
-        setShowNotificationToast(`Followed ${category}! You will be notified of new top claims.`);
-        setTimeout(() => setShowNotificationToast(null), 3000);
+        showToast(`Followed ${category}! You will be notified of new top claims.`);
         return [...prev, category];
       }
     });
@@ -188,8 +271,51 @@ export default function App() {
     setScreen('checking');
   };
 
-  const handleShare = () => {
-    setShowShareCard(true);
+  const copyTextToClipboard = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  };
+
+  const handleShareNow = async () => {
+    if (!shareCardData) return;
+
+    const shareUrl = window.location.href;
+    const sharePayload = {
+      text: `${shareCardData.shareText}\n${shareUrl}`,
+      title: shareCardData.shareTitle,
+      url: shareUrl,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(sharePayload);
+        setIsShared(true);
+        showToast('Shared successfully.');
+        return;
+      }
+
+      await copyTextToClipboard(`${sharePayload.title}\n${sharePayload.text}`);
+      setIsShared(true);
+      showToast('Share text copied to clipboard.');
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
+      }
+      console.error('Failed to share', err);
+      showToast('Share failed. Try again.');
+    }
   };
 
   const handleDownloadImage = async () => {
@@ -205,16 +331,31 @@ export default function App() {
       link.download = 'cap-card.png';
       link.href = dataUrl;
       link.click();
+      showToast('Share card saved as an image.');
     } catch (err) {
       console.error('Failed to generate image', err);
+      showToast('Could not save the share card.');
     } finally {
       setIsDownloading(false);
     }
   };
 
+  const closeShareCard = () => {
+    setShareCardData(null);
+    setIsShared(false);
+  };
+
   const handleAddToTopCaps = () => {
     setIsAddedToTopCaps(true);
   };
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        window.clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (screen === 'listening') {
@@ -669,7 +810,7 @@ export default function App() {
               <div className="fixed bottom-0 left-0 w-full z-40 px-3 sm:px-6 pb-20 md:pb-12 pt-8 md:pt-12 bg-gradient-to-t from-background via-background/90 to-transparent pointer-events-none">
                 <div className="w-full max-w-7xl mx-auto grid grid-cols-2 sm:flex sm:flex-row sm:flex-nowrap gap-2 sm:gap-4 justify-center items-center pointer-events-auto">
                   <button
-                    onClick={handleShare}
+                    onClick={openResultShareCard}
                     className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm bg-surface-high text-white font-headline font-black uppercase tracking-widest rounded-full hover:bg-white/10 transition-all flex items-center justify-center gap-2 sm:gap-3 active:scale-95 whitespace-nowrap"
                   >
                     <Share2 size={20} />
@@ -705,6 +846,7 @@ export default function App() {
                     onClick={() => {
                       setScreen('home');
                       setInputValue('');
+                      setShareCardData(null);
                       setIsShared(false);
                       setIsAddedToTopCaps(false);
                       setIsFlagged(false);
@@ -759,16 +901,16 @@ export default function App() {
                   </div>
                   <div className="relative z-10 group/claim cursor-help">
                     <p className="font-headline text-2xl md:text-4xl font-bold text-white mb-2 leading-tight mt-4">
-                      "The moon landing was faked using early CGI from a time-traveling James Cameron."
+                      "{featuredCap.claim}"
                     </p>
                     {/* Tooltip on hover over claim text */}
                     <div className="absolute top-full left-0 mt-2 w-full max-w-md p-5 bg-surface border border-white/10 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.6)] opacity-0 group-hover/claim:opacity-100 transition-all duration-200 pointer-events-none z-50">
                       <div className="flex items-center gap-2 mb-3">
-                        <span className="bg-primary/20 text-primary px-3 py-1 rounded-full font-label text-[10px] uppercase tracking-widest">Science</span>
+                        <span className="bg-primary/20 text-primary px-3 py-1 rounded-full font-label text-[10px] uppercase tracking-widest">{featuredCap.category}</span>
                       </div>
                       <h4 className="font-label text-xs uppercase tracking-widest text-primary mb-2">Why it's Cap</h4>
                       <p className="text-white/90 font-body text-sm leading-relaxed normal-case font-normal">
-                        James Cameron was 14 years old during the 1969 moon landing. Furthermore, the CGI technology required to fake the moon landing did not exist until decades later.
+                        {featuredCap.details}
                       </p>
                       <div className="absolute -top-2 left-8 w-4 h-4 bg-surface border-t border-l border-white/10 rotate-45"></div>
                     </div>
@@ -779,15 +921,24 @@ export default function App() {
                   </div>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-white/10 pt-6 gap-4 relative z-10">
                     <div className="flex items-center gap-4 text-outline text-sm font-label uppercase tracking-wider">
-                      <span className="flex items-center gap-2"><Flame size={16} className="text-primary" /> 42.8k Laughed</span>
+                      <span className="flex items-center gap-2"><Flame size={16} className="text-primary" /> {formatNumber(featuredCap.laughedAt)} Laughed</span>
                       <span>•</span>
-                      <span>12k Shares</span>
+                      <span>{formatNumber(featuredCap.shares)} Shares</span>
                     </div>
                     <div className="flex gap-2">
-                      <button className="flex items-center justify-center gap-2 bg-surface border border-white/10 text-white px-6 py-3 rounded-full font-headline font-black uppercase tracking-widest text-sm hover:bg-white/5 transition-colors active:scale-95">
-                        <Flame size={16} className="text-primary" /> Laugh
-                      </button>
-                      <button className="flex items-center justify-center gap-2 bg-white text-black px-6 py-3 rounded-full font-headline font-black uppercase tracking-widest text-sm hover:opacity-90 transition-opacity active:scale-95">
+                      <LaughButton
+                        celebrationKey={laughCelebrations.featured ?? 0}
+                        onClick={(e) => handleLaugh(e, 'featured')}
+                        className="bg-surface border border-white/10 px-6 py-3 text-sm font-headline font-black uppercase tracking-widest text-white transition-colors hover:bg-white/5"
+                        iconClassName="text-primary"
+                        label="Laugh"
+                        title="Laugh at this claim"
+                      />
+                      <button
+                        onClick={() => openClaimShareCard('featured')}
+                        className="flex items-center justify-center gap-2 bg-white text-black px-6 py-3 rounded-full font-headline font-black uppercase tracking-widest text-sm hover:opacity-90 transition-opacity active:scale-95"
+                        title="Share this claim"
+                      >
                         <Share2 size={16} /> Share
                       </button>
                     </div>
@@ -937,15 +1088,18 @@ export default function App() {
                             </p>
                           </div>
                           <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                            <button
+                            <LaughButton
+                              celebrationKey={laughCelebrations[`leaderboard-${item.id}`] ?? 0}
+                              compact
                               onClick={(e) => handleLaugh(e, item.id)}
-                              className="text-outline hover:text-primary transition-colors p-3 bg-surface-high rounded-full opacity-100 sm:opacity-0 group-hover:opacity-100"
+                              className="bg-surface-high p-3 text-outline opacity-100 transition-colors hover:text-primary sm:opacity-0 group-hover:opacity-100"
                               title="Laugh at this claim"
-                            >
-                              <Flame size={18} />
-                            </button>
+                            />
                             <button
-                              onClick={(e) => { e.stopPropagation(); handleShare(); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openClaimShareCard(item.id);
+                              }}
                               className="text-outline hover:text-white transition-colors p-3 bg-surface-high rounded-full opacity-100 sm:opacity-0 group-hover:opacity-100"
                               title="Share this claim"
                             >
@@ -1148,13 +1302,13 @@ export default function App() {
 
         {/* Share Card Modal */}
         <AnimatePresence>
-          {showShareCard && (
+          {shareCardData && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
-              onClick={() => setShowShareCard(false)}
+              onClick={closeShareCard}
             >
               <motion.div
                 ref={shareCardRef}
@@ -1169,52 +1323,72 @@ export default function App() {
                 <div className="absolute top-0 left-0 w-full h-2 bg-primary" />
 
                 <div className="flex-1 p-8 flex flex-col items-center justify-center text-center relative z-10">
-                  <div className="mb-8">
+                  <div className="mb-8 flex flex-col items-center gap-3">
+                    {shareCardData.category && (
+                      <span className="font-label text-[10px] uppercase tracking-[0.28em] text-white/80 bg-white/5 px-4 py-2 rounded-full border border-white/10 font-bold">
+                        {shareCardData.category}
+                      </span>
+                    )}
                     <span className="font-label text-xs uppercase tracking-[0.2em] text-primary bg-primary/10 px-4 py-2 rounded-full border border-primary/20 font-bold">
-                      99% Confidence
+                      {shareCardData.badge}
                     </span>
                   </div>
 
-                  <h1 className="font-headline text-[110px] leading-none font-black text-primary uppercase italic tracking-tighter mb-8 drop-shadow-[0_0_40px_rgba(226,36,31,0.6)]">
-                    CAP
+                  <h1 className="font-headline text-[72px] sm:text-[96px] leading-none font-black text-primary uppercase italic tracking-tighter mb-8 drop-shadow-[0_0_40px_rgba(226,36,31,0.6)]">
+                    {shareCardData.title}
                   </h1>
 
-                  <p className="font-headline text-2xl text-white font-bold leading-tight italic">
-                    "The headline overstates what the sources actually support."
+                  <p className="font-headline text-xl sm:text-2xl text-white font-bold leading-tight italic">
+                    {shareCardData.quote}
                   </p>
                 </div>
 
                 <div className="p-6 text-center relative z-10 border-t border-white/5 bg-black/40">
                   <p className="font-label text-[10px] uppercase tracking-widest text-outline opacity-60">
-                    Checked with Firecrawl. Spoken by Cap on 11Labs.
+                    {shareCardData.footer}
                   </p>
                 </div>
               </motion.div>
 
-              {/* Close button - hidden in screenshots usually, but good for UX */}
               <button
-                onClick={() => setShowShareCard(false)}
+                onClick={closeShareCard}
                 className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white/50 hover:text-white transition-colors z-20"
               >
                 <X size={16} />
               </button>
 
-              <div className="absolute bottom-8 left-0 w-full flex justify-center pointer-events-auto">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownloadImage();
-                  }}
-                  disabled={isDownloading}
-                  className="flex items-center gap-2 bg-primary text-white px-6 py-3 rounded-full font-headline font-black uppercase tracking-widest text-sm hover:bg-primary/90 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isDownloading ? (
-                    <RefreshCw size={16} className="animate-spin" />
-                  ) : (
-                    <Download size={16} />
-                  )}
-                  {isDownloading ? 'Saving...' : 'Save as Image'}
-                </button>
+              <div className="absolute bottom-8 left-0 w-full flex justify-center pointer-events-auto px-4">
+                <div className="flex w-full max-w-xl flex-col sm:flex-row items-center justify-center gap-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleShareNow();
+                    }}
+                    className={cn(
+                      "flex w-full sm:w-auto items-center justify-center gap-2 px-6 py-3 rounded-full font-headline font-black uppercase tracking-widest text-sm transition-colors active:scale-95",
+                      isShared ? "bg-white text-black" : "bg-surface-high text-white hover:bg-white/10"
+                    )}
+                  >
+                    {isShared ? <Check size={16} /> : <Share2 size={16} />}
+                    {isShared ? 'Shared' : 'Share Now'}
+                  </button>
+                  
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDownloadImage();
+                    }}
+                    disabled={isDownloading}
+                    className="flex w-full sm:w-auto items-center justify-center gap-2 bg-primary text-white px-6 py-3 rounded-full font-headline font-black uppercase tracking-widest text-sm hover:bg-primary/90 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isDownloading ? (
+                      <RefreshCw size={16} className="animate-spin" />
+                    ) : (
+                      <Download size={16} />
+                    )}
+                    {isDownloading ? 'Saving...' : 'Save as Image'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}
