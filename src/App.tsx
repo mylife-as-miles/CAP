@@ -559,21 +559,16 @@ export default function App() {
                       <span className="font-label text-xs uppercase tracking-[0.2em] text-primary bg-primary/10 px-3 py-1 rounded-full">Confidence: High</span>
                       <span className="font-label text-xs uppercase tracking-[0.2em] text-outline">Ref ID: 8821-X</span>
                     </div>
-                    <div className="flex items-center justify-center gap-4 mb-4 relative">
-                      <div className="relative group/cap cursor-help">
-                        <h1 className="font-headline text-[80px] md:text-[140px] leading-none font-black text-primary uppercase italic tracking-tighter">CAP</h1>
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-80 p-5 bg-surface-high border border-white/10 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.5)] opacity-0 group-hover/cap:opacity-100 transition-all duration-200 pointer-events-none z-50">
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className="bg-primary/20 text-primary px-3 py-1 rounded-full font-label text-[10px] uppercase tracking-widest">Verdict Reasoning</span>
-                          </div>
-                          <p className="font-body text-sm text-white normal-case not-italic text-left font-normal leading-relaxed">
-                            Flagged as CAP due to significant contradictions with official documentation and verified pricing data. The claim overstates what the sources actually support.
+                    <div className="flex items-center justify-center gap-4 mb-4 relative group">
+                      <h1 className="font-headline text-[80px] md:text-[140px] leading-none font-black text-primary uppercase italic tracking-tighter">CAP</h1>
+                      <div className="relative cursor-help mt-4 md:mt-8">
+                        <Info size={32} className="text-outline group-hover:text-primary transition-colors" />
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-64 p-4 bg-surface-high border border-white/10 rounded-2xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                          <p className="font-body text-sm text-white normal-case not-italic text-left font-normal">
+                            Flagged as CAP due to significant contradictions with official documentation and verified pricing data.
                           </p>
                           <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-surface-high border-b border-r border-white/10 rotate-45"></div>
                         </div>
-                      </div>
-                      <div className="mt-4 md:mt-8">
-                        <Info size={32} className="text-outline/50" />
                       </div>
                     </div>
                     <p className="font-headline text-2xl md:text-3xl text-white max-w-2xl font-bold leading-tight italic mb-8">
@@ -749,14 +744,16 @@ export default function App() {
                 <motion.div
                   animate={{ boxShadow: ['0 0 0 rgba(226,36,31,0)', '0 0 20px rgba(226,36,31,0.3)', '0 0 0 rgba(226,36,31,0)'] }}
                   transition={{ duration: 2, repeat: Infinity }}
-                  className="bg-surface-high border-2 border-primary/50 rounded-3xl p-8 relative overflow-hidden"
+                  className="bg-surface-high border-2 border-primary/50 rounded-3xl p-8 relative"
                 >
                   {/* Shimmer effect */}
-                  <motion.div
-                    animate={{ x: ['-100%', '200%'] }}
-                    transition={{ duration: 3, repeat: Infinity, ease: "linear", repeatDelay: 1 }}
-                    className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent skew-x-12 z-0"
-                  />
+                  <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+                    <motion.div
+                      animate={{ x: ['-100%', '200%'] }}
+                      transition={{ duration: 3, repeat: Infinity, ease: "linear", repeatDelay: 1 }}
+                      className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/10 to-transparent skew-x-12 z-0"
+                    />
+                  </div>
                   <div className="absolute top-0 right-0 bg-primary text-white font-label text-[10px] uppercase tracking-widest px-4 py-2 rounded-bl-xl font-bold z-10">
                     Cap of the Day
                   </div>
@@ -765,7 +762,7 @@ export default function App() {
                       "The moon landing was faked using early CGI from a time-traveling James Cameron."
                     </p>
                     {/* Tooltip on hover over claim text */}
-                    <div className="absolute bottom-full left-0 mb-3 w-full max-w-md p-5 bg-surface border border-white/10 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.6)] opacity-0 group-hover/claim:opacity-100 transition-all duration-200 pointer-events-none z-30">
+                    <div className="absolute top-full left-0 mt-2 w-full max-w-md p-5 bg-surface border border-white/10 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.6)] opacity-0 group-hover/claim:opacity-100 transition-all duration-200 pointer-events-none z-50">
                       <div className="flex items-center gap-2 mb-3">
                         <span className="bg-primary/20 text-primary px-3 py-1 rounded-full font-label text-[10px] uppercase tracking-widest">Science</span>
                       </div>
@@ -773,7 +770,7 @@ export default function App() {
                       <p className="text-white/90 font-body text-sm leading-relaxed normal-case font-normal">
                         James Cameron was 14 years old during the 1969 moon landing. Furthermore, the CGI technology required to fake the moon landing did not exist until decades later.
                       </p>
-                      <div className="absolute -bottom-2 left-8 w-4 h-4 bg-surface border-b border-r border-white/10 rotate-45"></div>
+                      <div className="absolute -top-2 left-8 w-4 h-4 bg-surface border-t border-l border-white/10 rotate-45"></div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mb-6 relative z-10">
