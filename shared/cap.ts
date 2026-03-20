@@ -31,6 +31,50 @@ export interface CheckClaimResponse {
   persistedClaimId?: string;
 }
 
+export interface PublishClaimAnalysisCard {
+  id: string;
+  title: string;
+  text: string;
+}
+
+export interface PublishClaimSource {
+  name: string;
+  url: string;
+  text: string;
+}
+
+export interface PublishClaimSnapshot {
+  claimText: string;
+  verdict: CapUiVerdict;
+  confidence: number;
+  verdictExplanation: string;
+  summary: string;
+  analysisCards: PublishClaimAnalysisCard[];
+  sources: PublishClaimSource[];
+}
+
+export interface PublishClaimInput {
+  visitorId: string;
+  checkedAt: string;
+  mode: CapCheckMode;
+  question: string;
+  claimText: string;
+  url?: string;
+  result: PublishClaimSnapshot;
+}
+
+export interface PublishClaimMetrics {
+  laughCount: number;
+  shareCount: number;
+  viewCount: number;
+}
+
+export interface PublishClaimResponse {
+  claimId: string;
+  created: boolean;
+  metrics: PublishClaimMetrics;
+}
+
 export interface CheckClaimErrorDetail {
   code: 'VALIDATION_ERROR' | 'UPSTREAM_ERROR' | 'TIMEOUT' | 'NO_EVIDENCE';
   message: string;
@@ -101,6 +145,24 @@ export function isCheckClaimResponse(value: unknown): value is CheckClaimRespons
     typeof candidate.spokenSummary === 'string' &&
     Array.isArray(candidate.reasons) &&
     Array.isArray(candidate.sources)
+  );
+}
+
+export function isPublishClaimResponse(value: unknown): value is PublishClaimResponse {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const metrics = candidate.metrics as Record<string, unknown> | undefined;
+
+  return (
+    typeof candidate.claimId === 'string' &&
+    typeof candidate.created === 'boolean' &&
+    !!metrics &&
+    typeof metrics.laughCount === 'number' &&
+    typeof metrics.shareCount === 'number' &&
+    typeof metrics.viewCount === 'number'
   );
 }
 

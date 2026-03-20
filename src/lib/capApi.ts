@@ -6,9 +6,12 @@ import {
   type CheckClaimInput,
   type CheckClaimResponse,
   type ElevenLabsSignedUrlResponse,
+  type PublishClaimInput,
+  type PublishClaimResponse,
   isCheckClaimError,
   isCheckClaimResponse,
   isElevenLabsSignedUrlResponse,
+  isPublishClaimResponse,
 } from '@/shared/cap';
 
 export class CapFunctionError extends Error {
@@ -86,6 +89,23 @@ export async function getElevenLabsSignedUrl(visitorId?: string): Promise<Eleven
 
   if (!isElevenLabsSignedUrlResponse(data)) {
     throw toFunctionError(null, 'Cap received an invalid voice session payload.');
+  }
+
+  return data;
+}
+
+export async function publishClaim(input: PublishClaimInput): Promise<PublishClaimResponse> {
+  const { data, error } = await supabase.functions.invoke('publish-claim', {
+    body: input,
+  });
+
+  if (error) {
+    const structured = await readStructuredFunctionError(error);
+    throw toFunctionError(structured?.error ?? null, 'Cap could not publish this result to Top Caps.');
+  }
+
+  if (!isPublishClaimResponse(data)) {
+    throw toFunctionError(null, 'Cap received an invalid Top Caps publish response.');
   }
 
   return data;

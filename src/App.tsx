@@ -7,7 +7,20 @@ import { LaughButton } from '@/src/components/LaughButton';
 import { MicOrb } from '@/src/components/MicOrb';
 import { TrendCard } from '@/src/components/TrendCard';
 import { useCapVoiceSession } from '@/src/hooks/useCapVoiceSession';
-import { buildErrorFallbackResponse, CapFunctionError, checkClaim } from '@/src/lib/capApi';
+import { buildErrorFallbackResponse, CapFunctionError, checkClaim, publishClaim } from '@/src/lib/capApi';
+import {
+  createAlertEntry,
+  createHistoryEntry,
+  getAlertEntries,
+  getDisclaimerDismissed,
+  getHistoryEntries,
+  saveAlertEntries,
+  saveHistoryEntry,
+  setDisclaimerDismissed,
+  type AlertEntry,
+  type ClaimMetricBaseline,
+  type HistoryEntry,
+} from '@/src/lib/browserStore';
 import { buildResultViewFromCheck, buildResultViewFromClaim, type ResultViewModel } from '@/src/lib/resultView';
 import { supabase } from '@/src/lib/supabase';
 import { cn } from '@/src/lib/utils';
@@ -45,6 +58,24 @@ type ShareCardData = {
   shareTitle: string;
 };
 
+type ActiveResultSource = 'local-check' | 'history' | 'published-claim';
+
+interface ActiveResultState {
+  view: ResultViewModel;
+  source: ActiveResultSource;
+  historyEntryId?: string;
+  publishedClaimId?: string;
+  checkContext?: HistoryEntry['context'];
+}
+
+const DISCLAIMER_SCREENS: Screen[] = ['results', 'top', 'history', 'notifications', 'trends'];
+
+function sortByCreatedAtDesc<T extends { createdAt: string }>(items: T[]) {
+  return [...items].sort((left, right) => (
+    new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+  ));
+}
+
 const RESULT_THEME = {
   CAP: {
     accent: 'text-primary',
@@ -81,7 +112,6 @@ export default function App() {
   const [inputValue, setInputValue] = useState('');
   const [inputError, setInputError] = useState<string | null>(null);
   const [isShared, setIsShared] = useState(false);
-  const [isAddedToTopCaps, setIsAddedToTopCaps] = useState(false);
   const [isFlagged, setIsFlagged] = useState(false);
   const [shareCardData, setShareCardData] = useState<ShareCardData | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -101,15 +131,26 @@ export default function App() {
   const [featuredCap, setFeaturedCap] = useState<Claim | null>(null);
   const [topCapsData, setTopCapsData] = useState<Claim[]>([]);
   const [expandedCards, setExpandedCards] = useState<string[]>([]);
-  const [activeResult, setActiveResult] = useState<ResultViewModel | null>(null);
+  const [activeResult, setActiveResult] = useState<ActiveResultState | null>(null);
   const [activeCheckLabel, setActiveCheckLabel] = useState('');
   const [isCheckingLive, setIsCheckingLive] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
+  const [alertEntries, setAlertEntries] = useState<AlertEntry[]>([]);
+  const [hasDismissedDisclaimer, setHasDismissedDisclaimer] = useState(() => getDisclaimerDismissed());
+  const [isAlertSyncing, setIsAlertSyncing] = useState(false);
+  const [alertSyncError, setAlertSyncError] = useState<string | null>(null);
   const visitorIdRef = useRef(getOrCreateVisitorId());
   const activeConversationIdRef = useRef<string | null>(null);
+  const historyEntriesRef = useRef<HistoryEntry[]>([]);
+  const alertEntriesRef = useRef<AlertEntry[]>([]);
+
+  // Voice Auto-Hangup State machine
+  const [voiceHangupState, setVoiceHangupState] = useState<'idle' | 'waiting_for_speech' | 'waiting_for_silence'>('idle');
 
   const fetchClaims = async () => {
     try {
       setIsLoading(true);
+      setDataError(null);
 
       // Fetch Featured Claim
       const { data: featuredData, error: featuredError } = await supabase
@@ -120,7 +161,7 @@ export default function App() {
         .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
       if (featuredError) throw featuredError;
-      if (featuredData) setFeaturedCap(featuredData as any);
+      setFeaturedCap((featuredData as any) ?? null);
 
       // Fetch Top Caps
       const { data: topData, error: topError } = await supabase
@@ -141,8 +182,201 @@ export default function App() {
   };
 
   useEffect(() => {
+    historyEntriesRef.current = historyEntries;
+  }, [historyEntries]);
+
+  useEffect(() => {
+    alertEntriesRef.current = alertEntries;
+  }, [alertEntries]);
+
+  const persistHistoryEntries = async (entries: HistoryEntry[]) => {
+    if (entries.length === 0) {
+      return entries;
+    }
+
+    await Promise.all(entries.map((entry) => saveHistoryEntry(entry)));
+
+    setHistoryEntries((previous) => {
+      const nextEntries = [
+        ...previous.filter((item) => !entries.some((entry) => entry.id === item.id)),
+        ...entries,
+      ];
+      return sortByCreatedAtDesc(nextEntries);
+    });
+
+    setActiveResult((current) => {
+      if (!current?.historyEntryId) {
+        return current;
+      }
+
+      const updatedEntry = entries.find((entry) => entry.id === current.historyEntryId);
+      if (!updatedEntry) {
+        return current;
+      }
+
+      return {
+        ...current,
+        checkContext: updatedEntry.context,
+        publishedClaimId: updatedEntry.publishedClaimId ?? updatedEntry.result.claimId ?? current.publishedClaimId,
+        view: updatedEntry.result,
+      };
+    });
+
+    return entries;
+  };
+
+  const persistAlertRecords = async (entries: AlertEntry[]) => {
+    if (entries.length === 0) {
+      return entries;
+    }
+
+    await saveAlertEntries(entries);
+
+    setAlertEntries((previous) => {
+      const nextEntries = [
+        ...previous.filter((item) => !entries.some((entry) => entry.id === item.id)),
+        ...entries,
+      ];
+      return sortByCreatedAtDesc(nextEntries);
+    });
+
+    return entries;
+  };
+
+  const loadLocalData = async () => {
+    const [history, alerts] = await Promise.all([
+      getHistoryEntries(),
+      getAlertEntries(),
+    ]);
+
+    setHistoryEntries((previous) => sortByCreatedAtDesc([
+      ...previous.filter((entry) => !history.some((stored) => stored.id === entry.id)),
+      ...history,
+    ]));
+    setAlertEntries((previous) => sortByCreatedAtDesc([
+      ...previous.filter((entry) => !alerts.some((stored) => stored.id === entry.id)),
+      ...alerts,
+    ]));
+  };
+
+  const applyTrackedClaimBaseline = async (
+    claimId: string,
+    baseline: Pick<ClaimMetricBaseline, 'laughCount' | 'shareCount'>,
+  ) => {
+    const trackedEntries = historyEntriesRef.current.filter((entry) => entry.publishedClaimId === claimId);
+    if (trackedEntries.length === 0) {
+      return;
+    }
+
+    const nextBaseline: ClaimMetricBaseline = {
+      ...baseline,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await persistHistoryEntries(trackedEntries.map((entry) => ({
+      ...entry,
+      metricBaseline: nextBaseline,
+      result: {
+        ...entry.result,
+        claimId,
+      },
+    })));
+  };
+
+  const syncTrackedClaimAlerts = async () => {
+    const trackedEntries = historyEntriesRef.current.filter((entry) => entry.publishedClaimId);
+    const trackedClaimIds = [...new Set(trackedEntries.map((entry) => entry.publishedClaimId).filter(Boolean))] as string[];
+
+    if (trackedClaimIds.length === 0) {
+      setAlertSyncError(null);
+      return;
+    }
+
+    try {
+      setIsAlertSyncing(true);
+      setAlertSyncError(null);
+
+      const { data, error } = await supabase
+        .from('claims')
+        .select('id, claim_text, claim_metrics(laugh_count, share_count, view_count)')
+        .in('id', trackedClaimIds)
+        .eq('status', 'published');
+
+      if (error) {
+        throw error;
+      }
+
+      const historyUpdates: HistoryEntry[] = [];
+      const nextAlerts: AlertEntry[] = [];
+
+      for (const record of data ?? []) {
+        const rawMetrics = Array.isArray((record as any).claim_metrics)
+          ? (record as any).claim_metrics[0]
+          : (record as any).claim_metrics;
+        const liveLaughCount = rawMetrics?.laugh_count ?? 0;
+        const liveShareCount = rawMetrics?.share_count ?? 0;
+        const claimId = (record as any).id as string;
+        const claimText = ((record as any).claim_text as string) || 'Your published claim';
+        const relatedEntries = trackedEntries.filter((entry) => entry.publishedClaimId === claimId);
+        const currentBaseline = relatedEntries.find((entry) => entry.metricBaseline)?.metricBaseline;
+
+        if (currentBaseline) {
+          const laughDelta = Math.max(0, liveLaughCount - currentBaseline.laughCount);
+          const shareDelta = Math.max(0, liveShareCount - currentBaseline.shareCount);
+
+          if (laughDelta > 0) {
+            nextAlerts.push(createAlertEntry({
+              claimId,
+              claimText,
+              createdAt: new Date().toISOString(),
+              delta: laughDelta,
+              read: false,
+              type: 'laugh',
+            }));
+          }
+
+          if (shareDelta > 0) {
+            nextAlerts.push(createAlertEntry({
+              claimId,
+              claimText,
+              createdAt: new Date().toISOString(),
+              delta: shareDelta,
+              read: false,
+              type: 'share',
+            }));
+          }
+        }
+
+        const nextBaseline: ClaimMetricBaseline = {
+          laughCount: liveLaughCount,
+          shareCount: liveShareCount,
+          updatedAt: new Date().toISOString(),
+        };
+
+        historyUpdates.push(...relatedEntries.map((entry) => ({
+          ...entry,
+          metricBaseline: nextBaseline,
+          result: {
+            ...entry.result,
+            claimId,
+          },
+        })));
+      }
+
+      await persistHistoryEntries(historyUpdates);
+      await persistAlertRecords(nextAlerts);
+    } catch (error) {
+      console.error('Failed to sync owner alerts', error);
+      setAlertSyncError('Could not refresh your alert feed right now.');
+    } finally {
+      setIsAlertSyncing(false);
+    }
+  };
+
+  useEffect(() => {
     initAnalytics();
-    fetchClaims();
+    void fetchClaims();
+    void loadLocalData();
   }, []);
 
   useEffect(() => {
@@ -157,6 +391,12 @@ export default function App() {
     }
   }, [screen]);
 
+  useEffect(() => {
+    if (screen === 'notifications') {
+      void syncTrackedClaimAlerts();
+    }
+  }, [screen]);
+
   const showToast = (message: string) => {
     setShowNotificationToast(message);
     if (toastTimeoutRef.current) {
@@ -168,8 +408,33 @@ export default function App() {
   const resetResultFlags = () => {
     setShareCardData(null);
     setIsShared(false);
-    setIsAddedToTopCaps(false);
     setIsFlagged(false);
+  };
+
+  const storeLocalResult = async (
+    resultView: ResultViewModel,
+    question: string,
+    options: {
+      claimText?: string;
+      url?: string;
+      mode: 'voice' | 'manual';
+      metadata?: Record<string, unknown>;
+    },
+  ) => {
+    const historyEntry = createHistoryEntry({
+      context: {
+        checkedAt: new Date().toISOString(),
+        claimText: options.claimText,
+        metadata: options.metadata,
+        mode: options.mode,
+        question,
+        url: options.url,
+      },
+      result: resultView,
+    });
+
+    await persistHistoryEntries([historyEntry]);
+    return historyEntry;
   };
 
   const runClaimCheck = async (
@@ -201,14 +466,20 @@ export default function App() {
         visitorId: visitorIdRef.current,
       });
 
-      setActiveResult(buildResultViewFromCheck(displayText, response, Date.now() - startedAt));
+      const resultView = buildResultViewFromCheck(displayText, response, Date.now() - startedAt);
+      const historyEntry = await storeLocalResult(resultView, question, options);
+      setActiveResult({
+        checkContext: historyEntry.context,
+        historyEntryId: historyEntry.id,
+        publishedClaimId: historyEntry.publishedClaimId,
+        source: 'local-check',
+        view: historyEntry.result,
+      });
       setScreen('results');
 
-      // Auto-terminate voice session after a short delay to allow agent to finish playback
+      // Trigger auto-termination state machine for voice mode
       if (options.mode === 'voice') {
-        setTimeout(() => {
-          endVoiceSession();
-        }, 5000); // 5s is usually enough for a sharp verdict line
+        setVoiceHangupState('waiting_for_speech');
       }
 
       trackEvent('verdict_viewed', response.persistedClaimId, {
@@ -221,7 +492,15 @@ export default function App() {
         ? error.message
         : 'Cap hit an unexpected error while checking this.';
       const fallback = buildErrorFallbackResponse(message);
-      setActiveResult(buildResultViewFromCheck(displayText, fallback, Date.now() - startedAt));
+      const resultView = buildResultViewFromCheck(displayText, fallback, Date.now() - startedAt);
+      const historyEntry = await storeLocalResult(resultView, question, options);
+      setActiveResult({
+        checkContext: historyEntry.context,
+        historyEntryId: historyEntry.id,
+        publishedClaimId: historyEntry.publishedClaimId,
+        source: 'local-check',
+        view: historyEntry.result,
+      });
       setScreen('results');
       showToast(message);
       return fallback;
@@ -233,42 +512,33 @@ export default function App() {
   const openStoredClaimResult = (claim: Claim) => {
     resetResultFlags();
     setActiveCheckLabel(claim.claim_text);
-    setActiveResult(buildResultViewFromClaim(claim));
+    setActiveResult({
+      publishedClaimId: claim.id,
+      source: 'published-claim',
+      view: buildResultViewFromClaim(claim),
+    });
     setScreen('results');
   };
 
-  const openSampleTrendResult = (claimText: string) => {
+  const openHistoryEntryResult = (entry: HistoryEntry) => {
     resetResultFlags();
-    setActiveCheckLabel(claimText);
-    setActiveResult(buildResultViewFromCheck(claimText, {
-      verdict: 'CAP',
-      confidence: 78,
-      spokenSummary: 'Cap: the claim overstates what the strongest sources actually support.',
-      reasons: [
-        'The strongest sources add caveats that the headline leaves out.',
-        'Cap found evidence, but not enough to support the claim as stated.',
-      ],
-      sources: [
-        {
-          title: 'Reuters',
-          url: 'https://www.reuters.com/',
-          snippet: 'Background reporting suggests the viral framing is stronger than the underlying evidence.',
-        },
-        {
-          title: 'AP News',
-          url: 'https://apnews.com/',
-          snippet: 'Independent coverage adds context that weakens the clean version of the claim.',
-        },
-      ],
-    }, 0));
+    setActiveCheckLabel(entry.result.claimText);
+    setActiveResult({
+      checkContext: entry.context,
+      historyEntryId: entry.id,
+      publishedClaimId: entry.publishedClaimId ?? entry.result.claimId,
+      source: 'history',
+      view: entry.result,
+    });
     setScreen('results');
   };
 
   const {
-    endVoiceSession,
     startVoiceSession,
+    endVoiceSession,
     status: voiceStatus,
-    messages,
+    isSpeaking,
+    messages: voiceMessages,
   } = useCapVoiceSession({
     visitorId: visitorIdRef.current,
     onCheckClaim: async (input) => {
@@ -285,14 +555,29 @@ export default function App() {
           conversationId: activeConversationIdRef.current,
         });
       }
-
       activeConversationIdRef.current = null;
-      setScreen((currentScreen) => (currentScreen === 'listening' ? 'home' : currentScreen));
+      setScreen((curr) => (curr === 'listening' ? 'home' : curr));
     },
     onError: (message) => {
       showToast(message);
     },
   });
+
+  // Monitor voice session for auto-termination after verdict
+  useEffect(() => {
+    if (voiceHangupState === 'waiting_for_speech' && isSpeaking) {
+      setVoiceHangupState('waiting_for_silence');
+    } else if (voiceHangupState === 'waiting_for_silence' && !isSpeaking && voiceStatus === 'connected') {
+      // Small buffer to ensure final word playback finishes
+      const timer = setTimeout(() => {
+        if (!isSpeaking) {
+          endVoiceSession();
+          setVoiceHangupState('idle');
+        }
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [voiceHangupState, isSpeaking, voiceStatus, endVoiceSession]);
 
   const triggerLaughCelebration = (target: ClaimTarget) => {
     const celebrationKey = target === 'featured' ? 'featured' : `leaderboard-${target}`;
@@ -314,8 +599,8 @@ export default function App() {
     }
 
     setIsShared(false);
-    trackEvent('share_clicked', activeResult.claimId, { source: 'result_screen' });
-    setShareCardData(activeResult.share);
+    trackEvent('share_clicked', activeResult.publishedClaimId ?? activeResult.view.claimId, { source: 'result_screen' });
+    setShareCardData(activeResult.view.share);
   };
 
   const openClaimShareCard = async (target: ClaimTarget) => {
@@ -338,6 +623,10 @@ export default function App() {
 
       if (!error && data === 'counted') {
         trackEvent('share_clicked', featuredCap.id, { source: 'featured_card' });
+        void applyTrackedClaimBaseline(featuredCap.id, {
+          laughCount: featuredCap.claim_metrics.laugh_count,
+          shareCount: featuredCap.claim_metrics.share_count + 1,
+        });
       }
 
       if (error || data === 'rate_limited') {
@@ -365,6 +654,10 @@ export default function App() {
 
     if (!error && data === 'counted') {
       trackEvent('share_clicked', target, { source: 'leaderboard' });
+      void applyTrackedClaimBaseline(target, {
+        laughCount: currentClaim.claim_metrics.laugh_count,
+        shareCount: currentClaim.claim_metrics.share_count + 1,
+      });
     }
 
     if (error || data === 'rate_limited') {
@@ -393,6 +686,10 @@ export default function App() {
 
       if (!error && data === 'counted') {
         trackEvent('laugh_clicked', featuredCap.id, { source: 'featured_card' });
+        void applyTrackedClaimBaseline(featuredCap.id, {
+          laughCount: featuredCap.claim_metrics.laugh_count + 1,
+          shareCount: featuredCap.claim_metrics.share_count,
+        });
       }
 
       if (error || data === 'already_counted') {
@@ -403,6 +700,11 @@ export default function App() {
           setFeaturedCap(prevFeatured);
         }
       }
+      return;
+    }
+
+    const currentClaim = topCapsData.find((item) => item.id === target);
+    if (!currentClaim) {
       return;
     }
 
@@ -419,6 +721,10 @@ export default function App() {
 
     if (!error && data === 'counted') {
       trackEvent('laugh_clicked', target, { source: 'leaderboard' });
+      void applyTrackedClaimBaseline(target, {
+        laughCount: currentClaim.claim_metrics.laugh_count + 1,
+        shareCount: currentClaim.claim_metrics.share_count,
+      });
     }
 
     if (error || data === 'already_counted') {
@@ -458,6 +764,23 @@ export default function App() {
     setTopCapsFilterCategory('All');
   };
 
+  const dismissDisclaimer = () => {
+    setHasDismissedDisclaimer(true);
+    setDisclaimerDismissed(true);
+  };
+
+  const markAllAlertsRead = async () => {
+    const unreadAlerts = alertEntriesRef.current.filter((entry) => !entry.read);
+    if (unreadAlerts.length === 0) {
+      return;
+    }
+
+    await persistAlertRecords(unreadAlerts.map((entry) => ({
+      ...entry,
+      read: true,
+    })));
+  };
+
   const filteredAndSortedTopCaps = topCapsData
     .filter(item => topCapsFilterCategory === 'All' || item.category === topCapsFilterCategory)
     .sort((a, b) => {
@@ -481,8 +804,43 @@ export default function App() {
       return 0;
     });
 
+  const topCapCategories: string[] = [
+    'All',
+    ...Array.from(new Set<string>(
+      topCapsData
+        .map((item) => item.category)
+        .filter((value): value is string => Boolean(value)),
+    )),
+  ];
+
   const formatNumber = (num: number) => {
     return num >= 1000 ? (num / 1000).toFixed(1) + 'k' : num.toString();
+  };
+
+  const formatAbsoluteTime = (value: string) => {
+    return new Date(value).toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const formatRelativeTime = (value: string) => {
+    const diffMs = Date.now() - new Date(value).getTime();
+    const diffMinutes = Math.max(1, Math.round(diffMs / 60000));
+
+    if (diffMinutes < 60) {
+      return `${diffMinutes}m ago`;
+    }
+
+    const diffHours = Math.round(diffMinutes / 60);
+    if (diffHours < 24) {
+      return `${diffHours}h ago`;
+    }
+
+    const diffDays = Math.round(diffHours / 24);
+    return `${diffDays}d ago`;
   };
 
   const handleNavigate = (nextScreen: string) => {
@@ -621,8 +979,74 @@ export default function App() {
     setIsShared(false);
   };
 
-  const handleAddToTopCaps = () => {
-    setIsAddedToTopCaps(true);
+  const handleAddToTopCaps = async () => {
+    if (!activeResult?.checkContext || !activeResult.historyEntryId) {
+      return;
+    }
+
+    if (activeResult.source === 'published-claim' || activeResult.publishedClaimId || activeResult.view.claimId) {
+      return;
+    }
+
+    if (activeResult.view.verdict === 'UNVERIFIED') {
+      showToast('Only verified verdicts can be added to Top Caps right now.');
+      return;
+    }
+
+    try {
+      const response = await publishClaim({
+        checkedAt: activeResult.checkContext.checkedAt,
+        claimText: activeResult.view.claimText,
+        mode: activeResult.checkContext.mode,
+        question: activeResult.checkContext.question,
+        result: {
+          analysisCards: activeResult.view.analysisCards,
+          claimText: activeResult.view.claimText,
+          confidence: activeResult.view.confidence,
+          sources: activeResult.view.sources,
+          summary: activeResult.view.summary,
+          verdict: activeResult.view.verdict,
+          verdictExplanation: activeResult.view.verdictExplanation,
+        },
+        url: activeResult.checkContext.url,
+        visitorId: visitorIdRef.current,
+      });
+
+      const historyEntry = historyEntriesRef.current.find((entry) => entry.id === activeResult.historyEntryId);
+      if (!historyEntry) {
+        throw new Error('Local history entry missing.');
+      }
+
+      const updatedEntry: HistoryEntry = {
+        ...historyEntry,
+        addedToTopCapsAt: historyEntry.addedToTopCapsAt ?? new Date().toISOString(),
+        metricBaseline: {
+          laughCount: response.metrics.laughCount,
+          shareCount: response.metrics.shareCount,
+          updatedAt: new Date().toISOString(),
+        },
+        publishedClaimId: response.claimId,
+        result: {
+          ...historyEntry.result,
+          claimId: response.claimId,
+        },
+      };
+
+      await persistHistoryEntries([updatedEntry]);
+      setActiveResult((current) => current && current.historyEntryId === updatedEntry.id
+        ? {
+            ...current,
+            publishedClaimId: response.claimId,
+            view: updatedEntry.result,
+          }
+        : current);
+
+      void fetchClaims();
+      showToast(response.created ? 'Added to Top Caps.' : 'This result is already live in Top Caps.');
+    } catch (error) {
+      console.error('Failed to add result to Top Caps', error);
+      showToast(error instanceof Error ? error.message : 'Cap could not add this to Top Caps.');
+    }
   };
 
   const handleCheckAnother = async () => {
@@ -656,8 +1080,28 @@ export default function App() {
     };
   }, []);
 
-  const resultView = activeResult;
+  const resultView = activeResult?.view;
   const resultTheme = resultView ? RESULT_THEME[resultView.verdict] : RESULT_THEME.CAP;
+  const activePublishedClaimId = activeResult?.publishedClaimId ?? resultView?.claimId;
+  const canAddCurrentResultToTopCaps = Boolean(
+    activeResult?.checkContext &&
+    activeResult?.historyEntryId &&
+    activeResult?.source !== 'published-claim' &&
+    !activePublishedClaimId &&
+    resultView?.verdict !== 'UNVERIFIED',
+  );
+  const addToTopCapsLabel = activeResult?.source === 'published-claim'
+    ? 'On Top Caps'
+    : activePublishedClaimId
+      ? 'Added to Top Caps'
+      : resultView?.verdict === 'UNVERIFIED'
+        ? 'Unavailable for Top Caps'
+        : 'Add to Top Caps';
+  const shouldShowDisclaimer = !hasDismissedDisclaimer && DISCLAIMER_SCREENS.includes(screen);
+  const unreadAlertCount = alertEntries.filter((entry) => !entry.read).length;
+  const trackedPublishedClaimCount = new Set(
+    historyEntries.map((entry) => entry.publishedClaimId).filter(Boolean),
+  ).size;
 
   return (
     <div className="min-h-screen bg-background selection:bg-primary selection:text-black">
@@ -678,6 +1122,19 @@ export default function App() {
       </AnimatePresence>
 
       <main className="pt-20 md:pt-24 pb-28 md:pb-32 px-4 md:px-6 max-w-7xl mx-auto">
+        {shouldShowDisclaimer && (
+          <div className="mb-6 md:mb-8 rounded-2xl border border-primary/20 bg-primary/10 px-5 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <p className="text-sm text-white/90 font-body leading-relaxed">
+              Disclaimer: CAP results, shares, and laughs are automated or community-driven signals and should be independently verified before you rely on them.
+            </p>
+            <button
+              onClick={dismissDisclaimer}
+              className="self-start md:self-auto rounded-full border border-white/10 bg-surface px-4 py-2 text-xs font-label uppercase tracking-widest text-white hover:bg-surface-high transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         <AnimatePresence mode="wait">
           {screen === 'home' && (
             <motion.div
@@ -790,7 +1247,7 @@ export default function App() {
                         key={item.id}
                         type={item.verdict}
                         category={item.category}
-                        time={new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ago'}
+                        time={formatRelativeTime(item.created_at)}
                         claim={item.claim_text}
                         stats={`${formatNumber(item.claim_metrics.view_count)} views`}
                         onClick={async () => {
@@ -848,8 +1305,8 @@ export default function App() {
 
               <div className="min-h-[100px] flex items-center justify-center">
                 <p className="font-headline text-3xl md:text-5xl font-black text-white leading-tight tracking-tight italic">
-                  {messages && messages.length > 0 ? (
-                    <>"{messages[messages.length - 1].text}"</>
+                  {voiceMessages && voiceMessages.length > 0 ? (
+                    <>"{voiceMessages[voiceMessages.length - 1].text}"</>
                   ) : (
                     <>
                       "Yo Cap, <span className="text-outline">is this true? I saw a post that said...</span>"
@@ -1135,16 +1592,16 @@ export default function App() {
                   </button>
                   <button
                     onClick={handleAddToTopCaps}
-                    disabled={isAddedToTopCaps}
+                    disabled={!canAddCurrentResultToTopCaps}
                     className={cn(
                       "px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-headline font-black uppercase tracking-widest rounded-full transition-all flex items-center justify-center gap-2 sm:gap-3 active:scale-95 whitespace-nowrap",
-                      isAddedToTopCaps
+                      !canAddCurrentResultToTopCaps
                         ? "bg-surface-high text-primary border border-primary/30 cursor-default"
                         : "bg-primary text-black hover:bg-primary-dim shadow-[0_0_25px_rgba(255,142,128,0.4)]"
                     )}
                   >
-                    {isAddedToTopCaps ? <Check size={20} /> : <Star size={20} fill="currentColor" />}
-                    {isAddedToTopCaps ? 'Added to Top Caps' : 'Add to Top Caps'}
+                    {!canAddCurrentResultToTopCaps ? <Check size={20} /> : <Star size={20} fill="currentColor" />}
+                    {addToTopCapsLabel}
                   </button>
                   <button
                     onClick={() => setIsFlagged(true)}
@@ -1298,7 +1755,7 @@ export default function App() {
                             exit={{ opacity: 0, y: 10 }}
                             className="absolute top-full left-0 mt-2 w-56 bg-surface-high border border-white/10 rounded-xl shadow-xl overflow-hidden z-50"
                           >
-                            {['All', 'Health', 'Tech', 'Science', 'Politics'].map((category) => (
+                            {topCapCategories.map((category) => (
                               <div
                                 key={category}
                                 onClick={() => {
@@ -1500,13 +1957,60 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="w-full max-w-4xl mx-auto text-center"
+              className="w-full max-w-5xl mx-auto"
             >
-              <h1 className="font-headline text-4xl md:text-6xl font-black uppercase italic tracking-tighter mb-8 text-white">History</h1>
-              <p className="text-outline font-body text-lg">Your past fact-checks and verifications.</p>
-              <div className="mt-12 p-12 bg-surface rounded-3xl border border-white/5">
-                <p className="text-outline">Your history is empty.</p>
+              <div className="text-center mb-12">
+                <h1 className="font-headline text-4xl md:text-6xl font-black uppercase italic tracking-tighter mb-6 text-white">History</h1>
+                <p className="text-outline font-body text-lg">Every result saved in this browser, including private checks and anything you later pushed to Top Caps.</p>
               </div>
+
+              {historyEntries.length > 0 ? (
+                <div className="flex flex-col gap-4">
+                  {historyEntries.map((entry) => (
+                    <button
+                      key={entry.id}
+                      onClick={() => openHistoryEntryResult(entry)}
+                      className="w-full text-left bg-surface border border-white/5 rounded-3xl p-6 hover:border-white/20 transition-colors"
+                    >
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center gap-3 mb-4">
+                            <span className={cn('font-label text-xs uppercase tracking-[0.2em] px-3 py-1 rounded-full', RESULT_THEME[entry.result.verdict].badge)}>
+                              {entry.result.verdict}
+                            </span>
+                            <span className="text-outline font-label text-xs uppercase tracking-widest">
+                              {entry.context.mode === 'voice' ? 'Voice Check' : 'Manual Check'}
+                            </span>
+                            <span className="text-outline font-label text-xs uppercase tracking-widest">
+                              {formatAbsoluteTime(entry.createdAt)}
+                            </span>
+                          </div>
+                          <h3 className="font-headline text-2xl font-bold text-white mb-3 leading-tight">
+                            "{entry.result.claimText}"
+                          </h3>
+                          <p className="text-outline font-body leading-relaxed mb-4">
+                            {entry.result.summary}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-3 text-xs font-label uppercase tracking-widest">
+                            <span className="text-outline">{entry.result.meta.sourceCount}</span>
+                            <span className="text-outline">{entry.result.meta.auditSpeed}</span>
+                            <span className={entry.publishedClaimId ? 'text-primary' : 'text-outline'}>
+                              {entry.publishedClaimId ? 'Added to Top Caps' : 'Private to this browser'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-outline font-label text-xs uppercase tracking-widest">
+                          Reopen
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-12 p-12 bg-surface rounded-3xl border border-white/5 text-center">
+                  <p className="text-outline">Your history is empty.</p>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -1540,13 +2044,92 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="w-full max-w-4xl mx-auto text-center"
+              className="w-full max-w-5xl mx-auto"
             >
-              <h1 className="font-headline text-4xl md:text-6xl font-black uppercase italic tracking-tighter mb-8 text-white">Alerts</h1>
-              <p className="text-outline font-body text-lg">Recent updates and notifications.</p>
-              <div className="mt-12 p-12 bg-surface rounded-3xl border border-white/5">
-                <p className="text-outline">You have no new alerts.</p>
+              <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10">
+                <div>
+                  <h1 className="font-headline text-4xl md:text-6xl font-black uppercase italic tracking-tighter mb-4 text-white">Alerts</h1>
+                  <p className="text-outline font-body text-lg">
+                    Updates on claims this browser published to Top Caps. {unreadAlertCount > 0 ? `${unreadAlertCount} unread.` : 'All caught up.'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={() => {
+                      void syncTrackedClaimAlerts();
+                    }}
+                    className="flex items-center gap-2 rounded-full bg-surface-high px-4 py-2 text-xs font-label uppercase tracking-widest text-white hover:bg-white/10 transition-colors"
+                  >
+                    <RefreshCw size={14} className={cn(isAlertSyncing && 'animate-spin')} />
+                    {isAlertSyncing ? 'Syncing' : 'Refresh Alerts'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      void markAllAlertsRead();
+                    }}
+                    disabled={unreadAlertCount === 0}
+                    className="flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-xs font-label uppercase tracking-widest text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/5 transition-colors"
+                  >
+                    <Check size={14} />
+                    Mark All Read
+                  </button>
+                </div>
               </div>
+
+              {alertSyncError && (
+                <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/10 px-5 py-4 text-sm text-white/90">
+                  {alertSyncError}
+                </div>
+              )}
+
+              {alertEntries.length > 0 ? (
+                <div className="flex flex-col gap-4">
+                  {alertEntries.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className={cn(
+                        'bg-surface rounded-3xl border p-6 text-left',
+                        entry.read ? 'border-white/5' : 'border-primary/30'
+                      )}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center gap-3 mb-3">
+                            <span className={cn(
+                              'font-label text-xs uppercase tracking-[0.2em] px-3 py-1 rounded-full',
+                              entry.type === 'share' ? 'bg-secondary/10 text-secondary' : 'bg-primary/10 text-primary'
+                            )}>
+                              {entry.delta} New {entry.type === 'share' ? (entry.delta === 1 ? 'Share' : 'Shares') : (entry.delta === 1 ? 'Laugh' : 'Laughs')}
+                            </span>
+                            {!entry.read && (
+                              <span className="font-label text-[10px] uppercase tracking-[0.24em] text-primary">New</span>
+                            )}
+                          </div>
+                          <h3 className="font-headline text-2xl font-bold text-white mb-2 leading-tight">
+                            "{entry.claimText}"
+                          </h3>
+                          <p className="text-outline font-body">
+                            {entry.type === 'share'
+                              ? 'People shared one of your published fact checks.'
+                              : 'People laughed at one of your published fact checks.'}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-outline font-label text-xs uppercase tracking-widest">
+                          {formatAbsoluteTime(entry.createdAt)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-12 p-12 bg-surface rounded-3xl border border-white/5 text-center">
+                  <p className="text-outline">
+                    {trackedPublishedClaimCount > 0
+                      ? 'No new alerts yet.'
+                      : 'Add a result to Top Caps to start tracking shares and laughs here.'}
+                  </p>
+                </div>
+              )}
             </motion.div>
           )}
           {screen === 'trends' && (
@@ -1566,60 +2149,34 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <TrendCard
-                  type="CAP"
-                  category="Social Media"
-                  time="2h ago"
-                  claim="Drinking 4L of salt water cures all winter fatigue instantly."
-                  stats="842 researchers checked"
-                  onClick={() => openSampleTrendResult('Drinking 4L of salt water cures all winter fatigue instantly.')}
-                  onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
-                />
-                <TrendCard
-                  type="CAP"
-                  category="Economics"
-                  time="5h ago"
-                  claim="New housing starts in the metro area hit a 10-year high this June."
-                  stats="1.2k sources verified"
-                  onClick={() => openSampleTrendResult('New housing starts in the metro area hit a 10-year high this June.')}
-                  onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
-                />
-                <TrendCard
-                  type="CAP"
-                  category="Tech News"
-                  time="12h ago"
-                  claim="The new AI model is 400% more efficient at coding than last year."
-                  stats="Nuanced breakdown inside"
-                  onClick={() => openSampleTrendResult('The new AI model is 400% more efficient at coding than last year.')}
-                  onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
-                />
-                <TrendCard
-                  type="CAP"
-                  category="Health"
-                  time="1d ago"
-                  claim="Eating raw onions before bed prevents all seasonal allergies."
-                  stats="5.3k researchers checked"
-                  onClick={() => openSampleTrendResult('Eating raw onions before bed prevents all seasonal allergies.')}
-                  onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
-                />
-                <TrendCard
-                  type="CAP"
-                  category="Science"
-                  time="1d ago"
-                  claim="Astronomers discover a new exoplanet with water vapor in its atmosphere."
-                  stats="890 sources verified"
-                  onClick={() => openSampleTrendResult('Astronomers discover a new exoplanet with water vapor in its atmosphere.')}
-                  onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
-                />
-                <TrendCard
-                  type="CAP"
-                  category="Politics"
-                  time="2d ago"
-                  claim="New legislation will ban all gas-powered vehicles by 2028."
-                  stats="Nuanced breakdown inside"
-                  onClick={() => openSampleTrendResult('New legislation will ban all gas-powered vehicles by 2028.')}
-                  onBadgeClick={(e) => { e.stopPropagation(); setScreen('top'); }}
-                />
+                {isLoading ? (
+                  [1, 2, 3, 4, 5, 6].map((index) => (
+                    <div key={index} className="bg-surface h-64 rounded-3xl animate-pulse border border-white/5" />
+                  ))
+                ) : topCapsData.length > 0 ? (
+                  topCapsData.map((item) => (
+                    <TrendCard
+                      key={item.id}
+                      type={item.verdict}
+                      category={item.category}
+                      time={formatRelativeTime(item.created_at)}
+                      claim={item.claim_text}
+                      stats={`${formatNumber(item.claim_metrics.share_count)} shares • ${formatNumber(item.claim_metrics.laugh_count)} laughs`}
+                      onClick={async () => {
+                        await handleViewClaim(item.id);
+                        openStoredClaimResult(item);
+                      }}
+                      onBadgeClick={(e) => {
+                        e.stopPropagation();
+                        setScreen('top');
+                      }}
+                    />
+                  ))
+                ) : (
+                  <div className="col-span-full rounded-3xl border border-dashed border-white/10 bg-surface p-12 text-center text-outline">
+                    No live trends yet.
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
