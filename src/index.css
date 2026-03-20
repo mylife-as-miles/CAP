@@ -1,0 +1,35 @@
+@import url('https://fonts.googleapis.com/css2?family=Epilogue:wght@400;700;800;900&family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-headline: "Epilogue", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-label: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+
+  --color-primary: #FF3B30;
+  --color-primary-dim: #D32F2F;
+  --color-secondary: #34C759;
+  --color-tertiary: #FFCC00;
+  --color-background: #0A0A0A;
+  --color-surface: #141414;
+  --color-surface-high: #1E1E1E;
+  --color-outline: #8E8E93;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-white font-body antialiased;
+  }
+}
+
+.mic-orb-glow {
+  background: radial-gradient(circle, rgba(255,59,48,0.15) 0%, rgba(211,47,47,0.05) 50%, transparent 100%);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
