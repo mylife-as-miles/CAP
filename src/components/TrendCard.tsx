@@ -11,7 +11,7 @@ interface TrendCardProps {
   onBadgeClick?: (e: React.MouseEvent) => void;
 }
 
-export function TrendCard({ type, category, time, claim, stats, onClick, onBadgeClick }: TrendCardProps) {
+export const TrendCard: React.FC<TrendCardProps> = ({ type, category, time, claim, stats, onClick, onBadgeClick }) => {
   const typeStyles = {
     'CAP': "border-primary bg-primary/10 text-primary",
     'NO CAP': "border-secondary bg-secondary/10 text-secondary",

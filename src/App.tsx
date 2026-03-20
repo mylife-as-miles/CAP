@@ -207,9 +207,23 @@ export default function App() {
   const filteredAndSortedTopCaps = topCapsData
     .filter(item => topCapsFilterCategory === 'All' || item.category === topCapsFilterCategory)
     .sort((a, b) => {
-      if (topCapsSortBy === 'Shares') return b.claim_metrics.share_count - a.claim_metrics.share_count;
-      if (topCapsSortBy === 'Laughed At') return b.claim_metrics.laugh_count - a.claim_metrics.laugh_count;
-      if (topCapsSortBy === 'Date Added') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      if (topCapsSortBy === 'Shares') {
+        const diff = b.claim_metrics.share_count - a.claim_metrics.share_count;
+        if (diff !== 0) return diff;
+        const laughDiff = b.claim_metrics.laugh_count - a.claim_metrics.laugh_count;
+        if (laughDiff !== 0) return laughDiff;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      if (topCapsSortBy === 'Laughed At') {
+        const diff = b.claim_metrics.laugh_count - a.claim_metrics.laugh_count;
+        if (diff !== 0) return diff;
+        const shareDiff = b.claim_metrics.share_count - a.claim_metrics.share_count;
+        if (shareDiff !== 0) return shareDiff;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      if (topCapsSortBy === 'Date Added') {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
       return 0;
     });
 

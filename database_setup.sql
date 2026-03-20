@@ -1,22 +1,22 @@
--- Create claims table
+-- Create claims table for content and metadata
 CREATE TABLE IF NOT EXISTS public.claims (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     title TEXT NOT NULL,
     claim_text TEXT NOT NULL,
     source_url TEXT,
-    category TEXT DEFAULT 'Uncategorized',
-    verdict TEXT NOT NULL, -- 'CAP', 'NO CAP', 'HALF CAP'
-    confidence INTEGER DEFAULT 0, -- 0-100
-    reason_summary TEXT, -- Short reason
-    details TEXT, -- Full detailed reason (Why it's Cap)
-    sources JSONB DEFAULT '[]'::jsonb, -- Array of {name: string, url: string, text: string}
+    category TEXT DEFAULT 'Uncategorized', -- Required for UI filters
+    verdict TEXT NOT NULL CHECK (verdict IN ('CAP', 'NO CAP', 'HALF CAP')),
+    confidence INTEGER DEFAULT 0 CHECK (confidence >= 0 AND confidence <= 100),
+    reason_summary TEXT, -- Short reason for tooltip/preview
+    details TEXT, -- Full detailed explanation
+    sources JSONB DEFAULT '[]'::jsonb, -- Supporting evidence
     is_featured BOOLEAN DEFAULT FALSE,
-    status TEXT DEFAULT 'published', -- 'draft', 'published', 'archived'
+    status TEXT DEFAULT 'published' CHECK (status IN ('draft', 'published', 'archived')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create claim_metrics table
+-- Create claim_metrics table for engagement counters
 CREATE TABLE IF NOT EXISTS public.claim_metrics (
     claim_id UUID REFERENCES public.claims(id) ON DELETE CASCADE PRIMARY KEY,
     laugh_count INTEGER DEFAULT 0,
@@ -25,17 +25,19 @@ CREATE TABLE IF NOT EXISTS public.claim_metrics (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Enable RLS
+-- Enable Row Level Security
 ALTER TABLE public.claims ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.claim_metrics ENABLE ROW LEVEL SECURITY;
 
 -- Set up RLS Policies
 -- Allow public read access to published claims
+DROP POLICY IF EXISTS "Allow public read access to published claims" ON public.claims;
 CREATE POLICY "Allow public read access to published claims" 
 ON public.claims FOR SELECT 
 USING (status = 'published');
 
 -- Allow public read access to metrics for published claims
+DROP POLICY IF EXISTS "Allow public read access to metrics" ON public.claim_metrics;
 CREATE POLICY "Allow public read access to metrics" 
 ON public.claim_metrics FOR SELECT 
 USING (
@@ -46,7 +48,7 @@ USING (
     )
 );
 
--- RPC for incrementing laugh_count
+-- RPC for incrementing laugh_count securely
 CREATE OR REPLACE FUNCTION public.increment_laugh_count(target_claim_id UUID)
 RETURNS void AS $$
 BEGIN
@@ -58,7 +60,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- RPC for incrementing share_count
+-- RPC for incrementing share_count securely
 CREATE OR REPLACE FUNCTION public.increment_share_count(target_claim_id UUID)
 RETURNS void AS $$
 BEGIN
@@ -79,6 +81,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS on_claim_created ON public.claims;
 CREATE TRIGGER on_claim_created
     AFTER INSERT ON public.claims
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_claim_metrics();
@@ -87,14 +90,14 @@ CREATE TRIGGER on_claim_created
 INSERT INTO public.claims (title, claim_text, category, verdict, confidence, reason_summary, details, sources, is_featured, status)
 VALUES 
 (
-  'Moon Landing Fake', 
-  'The moon landing was faked using early CGI from a time-traveling James Cameron.', 
+  'Moon Landing Logic', 
+  'The moon landing was faked using early CGI from a time-traveling filmmaker.', 
   'Science', 
   'CAP', 
   99, 
-  'James Cameron was 14 years old in 1969. CGI tech was non-existent then.',
-  'James Cameron was 14 years old during the 1969 moon landing. The CGI required to fake that footage also did not exist until much later.',
-  '[{"name": "NASA", "url": "https://nasa.gov", "text": "Historical records and telemetry verify the Apollo 11 mission success."}]'::jsonb,
+  'CGI tech was non-existent in 1969. Filmmakers of the era were too young.',
+  'Commercial CGI required to fake such footage did not exist until the 1980s. Physical evidence and lunar samples confirm the missions.',
+  '[{"name": "NASA", "url": "https://nasa.gov", "text": "Lunar samples and telemetry verify Apollo 11."}]'::jsonb,
   TRUE, 
   'published'
 ),
@@ -105,36 +108,20 @@ VALUES
   'CAP', 
   95, 
   'Excessive salt intake causes dehydration and hypernatremia.',
-  'This claim originated from a viral TikTok video. Medical professionals warn that consuming excessive salt water can lead to severe dehydration and hypernatremia.',
-  '[{"name": "WHO", "url": "https://who.int", "text": "Excessive sodium intake is linked to adverse health outcomes."}, {"name": "Mayo Clinic", "url": "https://mayoclinic.org", "text": "Salt water can cause dangerous electrolyte imbalances."}]'::jsonb,
+  'Medical professionals warn that consuming excessive salt water can lead to severe dehydration and dangerous electrolyte imbalances.',
+  '[{"name": "WHO", "url": "https://who.int", "text": "Excessive sodium is linked to adverse health outcomes."}]'::jsonb,
   FALSE, 
   'published'
 ),
 (
-  'New Housing High', 
-  'New housing starts in the metro area hit a 10-year high this June.', 
+  'Market Rally', 
+  'New tech stocks hit an all-time high today amid AI growth reports.', 
   'Economics', 
   'NO CAP', 
   85, 
-  'Confirmed by census data and regional economic reports.',
-  'Confirmed by census data and regional economic reports. Actual growth matches the reported numbers.',
-  '[{"name": "Census Bureau", "url": "https://census.gov", "text": "June housing starts exceeded previous decade peaks."}]'::jsonb,
-  FALSE, 
-  'published'
-),
-(
-  'AI Coding Efficiency', 
-  'The new AI model is 400% more efficient at coding than last year.', 
-  'Tech', 
-  'HALF CAP', 
-  70, 
-  'Benchmarks show 4x improvement in specific tasks, but overall workflow gain is ~30%.',
-  'Benchmarks show 4x improvement in specific tasks, but overall workflow gain is ~30% due to integration and review times.',
-  '[{"name": "OpenAI", "url": "https://openai.com", "text": "Gains are task-specific and vary by complexity."}]'::jsonb,
+  'Verified by exchange data and quarterly reports.',
+  'The surge in tech stock evaluations is substantiated by latest market data and several high-profile AI integration successes.',
+  '[{"name": "Nasdaq", "url": "https://nasdaq.com", "text": "Tech index reached record levels this session."}]'::jsonb,
   FALSE, 
   'published'
 );
-
--- Initial metric updates for seed data
-SELECT public.increment_laugh_count(id) FROM public.claims WHERE is_featured = TRUE;
-SELECT public.increment_share_count(id) FROM public.claims WHERE is_featured = TRUE;
