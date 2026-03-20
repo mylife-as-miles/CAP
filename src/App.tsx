@@ -611,8 +611,469 @@ export default function App() {
     <MotionConfig reducedMotion={profile.reduceMotion ? 'always' : 'never'}>
       <div className="min-h-screen bg-background text-white selection:bg-primary selection:text-black">
         <Header activeTab={screen} onNavigate={setScreen} unreadCount={unreadNotifications} profile={profile} />
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              initial={{opacity: 0, y: -24, x: '-50%'}}
+              animate={{opacity: 1, y: 0, x: '-50%'}}
+              exit={{opacity: 0, y: -24, x: '-50%'}}
+              className={cn(
+                'fixed left-1/2 top-24 z-50 flex max-w-[min(92vw,48rem)] items-center gap-3 rounded-full px-5 py-3 text-sm font-semibold shadow-2xl backdrop-blur-xl',
+                toast.tone === 'success'
+                  ? 'bg-secondary text-black'
+                  : toast.tone === 'warning'
+                    ? 'bg-tertiary text-black'
+                    : 'bg-surface-high text-white',
+              )}
+            >
+              {toast.tone === 'success' ? <Check size={16} /> : <BellRing size={16} />}
+              <span>{toast.message}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <main className="mx-auto w-full max-w-7xl px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-24 sm:px-6 lg:px-8">
-          {/* UI sections inserted below */}
+          <AnimatePresence mode="wait">
+            {screen === 'home' && (
+              <motion.section
+                key="home"
+                initial={{opacity: 0, y: 18}}
+                animate={{opacity: 1, y: 0}}
+                exit={{opacity: 0, y: -18}}
+                className="flex flex-col gap-14"
+              >
+                <section className="grid gap-8 rounded-[2rem] border border-white/5 bg-[radial-gradient(circle_at_top,_rgba(255,59,48,0.15),_transparent_45%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))] px-4 py-8 sm:px-8 sm:py-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+                  <div className="order-2 flex flex-col items-start gap-6 lg:order-1">
+                    <span className="rounded-full border border-white/10 bg-surface-high px-4 py-2 font-label text-[11px] uppercase tracking-[0.28em] text-outline">
+                      Gemini grounded when available. Local fallback when not.
+                    </span>
+                    <div className="space-y-4">
+                      <h1 className="max-w-3xl font-headline text-[clamp(2.8rem,7vw,5.9rem)] font-black uppercase leading-[0.9] tracking-[-0.06em]">
+                        Check the claim,
+                        <br />
+                        <span className="text-primary">not the hype.</span>
+                      </h1>
+                      <p className="max-w-2xl text-base text-outline sm:text-lg">
+                        Paste a public URL, type a claim, or use the mic. CAP CORE returns a live Gemini-backed verdict when it can and stays fully usable with deterministic fallback analysis when it cannot.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      {HERO_CHIPS.map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => {
+                            setInputValue(chip);
+                            void submitInput(chip, 'hero-chip');
+                          }}
+                          className="rounded-full border border-white/10 bg-surface px-4 py-2.5 text-left font-label text-xs uppercase tracking-[0.24em] text-white transition hover:border-primary/60 hover:bg-surface-high"
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="order-1 flex flex-col items-center gap-5 lg:order-2">
+                    <MicOrb isListening={isListening} onClick={beginVoiceCapture} />
+                    <div className="text-center">
+                      <p className="font-label text-xs uppercase tracking-[0.35em] text-outline">Voice input</p>
+                      <p className="mt-2 max-w-sm text-sm text-outline">
+                        Browser speech recognition is used when available. Unsupported browsers fall back to typed input automatically.
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-[2rem] border border-white/5 bg-surface/80 p-4 shadow-2xl sm:p-6">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <p className="font-label text-xs uppercase tracking-[0.3em] text-outline">Submit a claim</p>
+                        <h2 className="mt-2 font-headline text-3xl font-black uppercase tracking-[-0.05em]">
+                          Public URL or plain text
+                        </h2>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={beginVoiceCapture}
+                        className="inline-flex items-center gap-2 self-start rounded-full border border-white/10 bg-surface-high px-4 py-2 font-label text-xs uppercase tracking-[0.24em] text-white transition hover:border-primary/50 hover:text-primary"
+                      >
+                        <Volume2 size={14} />
+                        Use Mic
+                      </button>
+                    </div>
+
+                    <div className="flex flex-col gap-3 lg:flex-row">
+                      <div
+                        className={cn(
+                          'flex flex-1 items-center gap-3 rounded-[1.75rem] border bg-background px-4 py-3 transition',
+                          inputError ? 'border-primary' : 'border-white/10 focus-within:border-primary/50',
+                        )}
+                      >
+                        <Search size={20} className="shrink-0 text-outline" />
+                        <input
+                          ref={inputRef}
+                          value={inputValue}
+                          onChange={(event) => {
+                            setInputValue(event.target.value);
+                            if (inputError) {
+                              setInputError(null);
+                            }
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              void submitInput();
+                            }
+                          }}
+                          className="w-full bg-transparent text-base text-white outline-none placeholder:text-outline/60 sm:text-lg"
+                          placeholder="Paste a public URL or type the claim you want to verify"
+                          type="text"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void submitInput()}
+                        disabled={isAnalyzing}
+                        className="inline-flex min-h-[56px] items-center justify-center gap-2 rounded-full bg-primary px-6 font-headline text-sm font-black uppercase tracking-[0.2em] text-black transition hover:bg-primary-dim disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isAnalyzing ? <RefreshCw size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                        {isAnalyzing ? 'Checking' : 'Check with Cap'}
+                      </button>
+                    </div>
+                    {inputError && <p className="pl-2 text-sm text-primary">{inputError}</p>}
+                  </div>
+                </section>
+
+                <section className="space-y-6">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="font-label text-xs uppercase tracking-[0.3em] text-primary">Trending investigations</p>
+                      <h2 className="mt-2 font-headline text-4xl font-black uppercase tracking-[-0.05em]">
+                        What people are checking now
+                      </h2>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setScreen('trends')}
+                      className="inline-flex items-center gap-2 font-label text-xs uppercase tracking-[0.22em] text-tertiary transition hover:text-white"
+                    >
+                      View all trends
+                      <ChevronDown size={14} className="-rotate-90" />
+                    </button>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {trendResults.slice(0, 3).map((result) => (
+                      <TrendCard
+                        key={result.id}
+                        type={result.verdict}
+                        category={result.category}
+                        time={formatRelativeTime(result.analyzedAt)}
+                        claim={result.title}
+                        stats={`${result.mode === 'live' ? 'Live' : 'Fallback'} • ${result.sourceCount} source${result.sourceCount === 1 ? '' : 's'}`}
+                        onClick={() => handleTrendOpen(result.id)}
+                        onBadgeClick={() => setScreen('top')}
+                      />
+                    ))}
+                  </div>
+                </section>
+              </motion.section>
+            )}
+
+            {screen === 'listening' && (
+              <motion.section
+                key="listening"
+                initial={{opacity: 0}}
+                animate={{opacity: 1}}
+                exit={{opacity: 0}}
+                className="flex min-h-[70vh] flex-col items-center justify-center gap-8 px-2 text-center"
+              >
+                <div className="flex items-center gap-3 rounded-full border border-secondary/30 bg-secondary/10 px-5 py-2 font-label text-xs uppercase tracking-[0.28em] text-secondary">
+                  <span className="relative flex h-3 w-3">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-secondary opacity-70" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-secondary" />
+                  </span>
+                  Listening
+                </div>
+
+                <MicOrb isListening className="scale-95 sm:scale-100" />
+
+                <div className="max-w-3xl space-y-4">
+                  <h1 className="font-headline text-[clamp(2.4rem,7vw,4.8rem)] font-black uppercase tracking-[-0.05em]">
+                    Say the claim out loud
+                  </h1>
+                  <p className="text-lg text-outline">
+                    {micTranscript ? `"${micTranscript}"` : 'Try a headline, rumor, quote, or public link.'}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap justify-center gap-3">
+                  {LISTENING_TAGS.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        stopListening();
+                        setInputValue(tag);
+                        void submitInput(tag, 'hero-chip');
+                      }}
+                      className="rounded-full border border-white/10 bg-surface-high px-4 py-2 font-label text-xs uppercase tracking-[0.24em] text-white transition hover:border-primary/60"
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => stopListening('Voice input cancelled.')}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-3 font-label text-xs uppercase tracking-[0.26em] text-outline transition hover:border-primary/50 hover:text-primary"
+                >
+                  <X size={16} />
+                  Cancel
+                </button>
+              </motion.section>
+            )}
+
+            {screen === 'checking' && (
+              <motion.section
+                key="checking"
+                initial={{opacity: 0}}
+                animate={{opacity: 1}}
+                exit={{opacity: 0}}
+                className="mx-auto flex w-full max-w-5xl flex-col gap-8"
+              >
+                <div className="space-y-4">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 font-label text-xs uppercase tracking-[0.24em] text-primary">
+                    <RefreshCw size={14} className="animate-spin" />
+                    Verifying
+                  </div>
+                  <h1 className="font-headline text-[clamp(2.2rem,6vw,4.4rem)] font-black uppercase leading-[0.96] tracking-[-0.05em]">
+                    {inputValue || 'Preparing investigation'}
+                  </h1>
+                  <p className="max-w-3xl text-outline">
+                    CAP CORE is normalizing the input, checking whether live Gemini tooling is available, and collecting evidence for the final verdict.
+                  </p>
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+                  <div className="rounded-[2rem] border border-white/5 bg-surface p-6">
+                    <h2 className="font-headline text-2xl font-black uppercase tracking-[-0.04em] text-primary">
+                      Investigation pipeline
+                    </h2>
+                    <div className="mt-6 space-y-6">
+                      {[
+                        {
+                          title: 'Normalize the request',
+                          text: 'Classify the input as a public URL or free-text claim and decide the tool path.',
+                          state: 'done',
+                        },
+                        {
+                          title: 'Query live tools when available',
+                          text: 'Gemini uses Google Search, and URL context is added for public URLs.',
+                          state: isAnalyzing ? 'active' : 'done',
+                        },
+                        {
+                          title: 'Build the verdict payload',
+                          text: 'The final screen is rendered from typed result data, not a static placeholder.',
+                          state: isAnalyzing ? 'pending' : 'done',
+                        },
+                      ].map((step) => (
+                        <div key={step.title} className="flex gap-4">
+                          <div
+                            className={cn(
+                              'mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border',
+                              step.state === 'done'
+                                ? 'border-secondary/30 bg-secondary text-black'
+                                : step.state === 'active'
+                                  ? 'border-primary/30 bg-primary text-black'
+                                  : 'border-white/10 bg-surface-high text-outline',
+                            )}
+                          >
+                            {step.state === 'done' ? <Check size={16} /> : <Search size={16} />}
+                          </div>
+                          <div>
+                            <h3 className="font-headline text-lg font-bold uppercase tracking-[-0.04em]">{step.title}</h3>
+                            <p className="mt-1 text-sm leading-6 text-outline">{step.text}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[2rem] border border-white/5 bg-surface-high p-6">
+                    <h2 className="font-headline text-xl font-black uppercase tracking-[-0.04em] text-white">Current input</h2>
+                    <p className="mt-4 break-words text-outline">{inputValue}</p>
+
+                    <div className="mt-8 space-y-3 text-sm text-outline">
+                      <div className="flex items-center justify-between rounded-2xl bg-background px-4 py-3">
+                        <span>Route</span>
+                        <span className="font-label uppercase tracking-[0.2em] text-white">
+                          {detectInvestigationKind(inputValue || '') === 'url' ? 'URL + Search' : 'Claim + Search'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl bg-background px-4 py-3">
+                        <span>Fallback ready</span>
+                        <span className="font-label uppercase tracking-[0.2em] text-white">Yes</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl bg-background px-4 py-3">
+                        <span>State</span>
+                        <span className="font-label uppercase tracking-[0.2em] text-primary">
+                          {isAnalyzing ? 'Running' : 'Finalizing'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.section>
+            )}
+
+            {screen === 'results' && activeResult && (
+              <motion.section
+                key={`results-${activeResult.id}`}
+                initial={{opacity: 0}}
+                animate={{opacity: 1}}
+                exit={{opacity: 0}}
+                className="space-y-10"
+              >
+                <section className="rounded-[2rem] border border-white/5 bg-surface p-5 shadow-[0_0_60px_-24px_rgba(255,59,48,0.35)] sm:p-8">
+                  <div className="flex flex-col gap-6">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Pill className={activeResult.verdict === 'CAP' ? 'bg-primary/15 text-primary' : activeResult.verdict === 'FACTS' ? 'bg-secondary/15 text-secondary' : 'bg-tertiary/20 text-tertiary'}>
+                        {activeResult.verdict}
+                      </Pill>
+                      <Pill>{activeResult.confidence}% confidence</Pill>
+                      <Pill>{activeResult.mode === 'live' ? 'Live web-grounded' : 'Local fallback'}</Pill>
+                      <Pill>{activeResult.category}</Pill>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h1 className="font-headline text-[clamp(3rem,10vw,8rem)] font-black uppercase leading-[0.88] tracking-[-0.08em] text-primary">
+                        {activeResult.verdict}
+                      </h1>
+                      <p className="max-w-4xl text-lg font-semibold text-white sm:text-2xl">{activeResult.summary}</p>
+                      <p className="max-w-4xl break-words text-outline">{activeResult.title}</p>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-4">
+                      <StatCard label="Source count" value={`${activeResult.sourceCount}`} helper={activeResult.mode === 'live' ? 'Retrieved from the grounded response.' : 'Fallback reference sources.'} />
+                      <StatCard label="Checked" value={formatDateTime(activeResult.analyzedAt)} helper={formatRelativeTime(activeResult.analyzedAt)} />
+                      <StatCard label="Shares" value={formatCompactNumber(activeResult.shares)} helper="Updated by the app state." />
+                      <StatCard label="Laughed at" value={formatCompactNumber(activeResult.laughedAt)} helper="Updated by the app state." />
+                    </div>
+
+                    {activeResult.note && (
+                      <div className="flex items-start gap-3 rounded-[1.5rem] border border-white/8 bg-background/80 px-4 py-4 text-sm text-outline">
+                        <Info size={18} className="mt-0.5 shrink-0 text-primary" />
+                        <p>{activeResult.note}</p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+                  <div className="space-y-6">
+                    <SectionTitle title="Discrepancy Analysis" />
+                    <div className="space-y-4">
+                      {activeResult.discrepancies.map((item, index) => (
+                        <div key={`${item.title}-${index}`} className="rounded-[1.5rem] border border-white/5 bg-surface-high p-5">
+                          <div className="flex gap-4">
+                            <span className="font-label text-lg font-bold text-primary">{String(index + 1).padStart(2, '0')}</span>
+                            <div>
+                              <h3 className="font-headline text-lg font-bold uppercase tracking-[-0.04em]">{item.title}</h3>
+                              <p className="mt-2 leading-7 text-outline">{item.text}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <SectionTitle title="Evidence To Review" />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {activeResult.evidence.map((item, index) => (
+                        <div key={`${item}-${index}`} className="rounded-[1.5rem] border border-white/5 bg-surface-high p-5">
+                          <p className="font-label text-xs uppercase tracking-[0.28em] text-outline">Evidence {index + 1}</p>
+                          <p className="mt-3 leading-7 text-white/90">{item}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <SectionTitle title="Sources & Queries" />
+                    <div className="space-y-4">
+                      {activeResult.sources.length > 0 ? (
+                        activeResult.sources.map((source) => (
+                          <a
+                            key={`${source.url}-${source.name}`}
+                            href={source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group block rounded-[1.5rem] border border-white/5 bg-surface-high p-5 transition hover:border-white/15"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <h3 className="font-headline text-lg font-bold uppercase tracking-[-0.04em] group-hover:text-primary">
+                                  {source.name}
+                                </h3>
+                                <p className="mt-1 text-xs uppercase tracking-[0.24em] text-outline">{source.status ?? 'Source'}</p>
+                              </div>
+                              <ExternalLink size={16} className="shrink-0 text-outline transition group-hover:text-primary" />
+                            </div>
+                            <p className="mt-3 break-all text-sm text-outline">{source.url}</p>
+                            {source.text && <p className="mt-3 text-sm leading-6 text-white/80">{source.text}</p>}
+                          </a>
+                        ))
+                      ) : (
+                        <EmptyPanel title="No structured sources" description="The analyzer returned no explicit sources for this result." />
+                      )}
+                    </div>
+
+                    <div className="rounded-[1.5rem] border border-white/5 bg-surface-high p-5">
+                      <div className="flex items-center gap-3">
+                        <Sparkles size={18} className="text-primary" />
+                        <h3 className="font-headline text-lg font-bold uppercase tracking-[-0.04em]">Query log</h3>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {activeResult.queryLog.length > 0 ? (
+                          activeResult.queryLog.map((query) => (
+                            <span
+                              key={query}
+                              className="rounded-full border border-white/8 bg-background px-3 py-2 font-label text-[11px] uppercase tracking-[0.2em] text-outline"
+                            >
+                              {query}
+                            </span>
+                          ))
+                        ) : (
+                          <p className="text-sm text-outline">No explicit query metadata was returned for this result.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="sticky bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-30 rounded-[1.75rem] border border-white/8 bg-background/90 p-3 shadow-2xl backdrop-blur-xl lg:bottom-6">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <ActionButton icon={Share2} label="Share Result" onClick={() => void handleShare(activeResult.id)} />
+                    <ActionButton
+                      icon={resultIsSaved ? Check : Star}
+                      label={resultIsSaved ? 'Already in Top Caps' : 'Add to Top Caps'}
+                      onClick={() => handleAddToTopCaps(activeResult.id)}
+                      disabled={resultIsSaved}
+                      primary
+                    />
+                    <ActionButton
+                      icon={Flag}
+                      label={activeResult.isFlagged ? 'Flagged' : 'Flag Result'}
+                      onClick={() => handleFlag(activeResult.id)}
+                      disabled={activeResult.isFlagged}
+                    />
+                    <ActionButton icon={RefreshCw} label="Check Another" onClick={resetForAnotherCheck} inverse />
+                  </div>
+                </section>
+              </motion.section>
+            )}
+          </AnimatePresence>
         </main>
         <MobileNav
           activeTab={screen === 'results' || screen === 'checking' || screen === 'listening' ? 'home' : screen}
