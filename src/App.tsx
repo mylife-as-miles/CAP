@@ -12,13 +12,9 @@ type Screen = 'home' | 'listening' | 'checking' | 'results' | 'top' | 'history' 
 type ClaimTarget = 'featured' | number;
 
 type ShareCardData = {
-  badge: string;
-  category?: string;
   footer: string;
-  quote: string;
   shareText: string;
   shareTitle: string;
-  title: string;
 };
 
 export default function App() {
@@ -158,24 +154,17 @@ export default function App() {
   };
 
   const buildClaimShareCard = (claim: { category: string; claim: string; laughedAt: number; shares: number }): ShareCardData => ({
-    badge: 'Hall of Shame',
-    category: claim.category,
     footer: 'Pulled from CAP\'s live leaderboard.',
-    quote: `"${claim.claim}"`,
-    shareText: `Top CAP in ${claim.category}: "${claim.claim}"\n${formatNumber(claim.laughedAt)} laughs and ${formatNumber(claim.shares)} shares on CAP.`,
-    shareTitle: `Top CAP: ${claim.category}`,
-    title: 'TOP CAP',
+    shareText: `CAP\n"${claim.claim}"`,
+    shareTitle: 'CAP',
   });
 
   const openResultShareCard = () => {
     setIsShared(false);
     setShareCardData({
-      badge: '99% Confidence',
       footer: 'Checked with Firecrawl. Spoken by Cap on 11Labs.',
-      quote: '"The headline overstates what the sources actually support."',
-      shareText: 'CAP verdict: "The headline overstates what the sources actually support."',
-      shareTitle: 'CAP Verdict',
-      title: 'CAP',
+      shareText: 'CAP\n"The headline overstates what the sources actually support."',
+      shareTitle: 'CAP',
     });
   };
 
@@ -1323,24 +1312,9 @@ export default function App() {
                 <div className="absolute top-0 left-0 w-full h-2 bg-primary" />
 
                 <div className="flex-1 p-8 flex flex-col items-center justify-center text-center relative z-10">
-                  <div className="mb-8 flex flex-col items-center gap-3">
-                    {shareCardData.category && (
-                      <span className="font-label text-[10px] uppercase tracking-[0.28em] text-white/80 bg-white/5 px-4 py-2 rounded-full border border-white/10 font-bold">
-                        {shareCardData.category}
-                      </span>
-                    )}
-                    <span className="font-label text-xs uppercase tracking-[0.2em] text-primary bg-primary/10 px-4 py-2 rounded-full border border-primary/20 font-bold">
-                      {shareCardData.badge}
-                    </span>
-                  </div>
-
-                  <h1 className="font-headline text-[72px] sm:text-[96px] leading-none font-black text-primary uppercase italic tracking-tighter mb-8 drop-shadow-[0_0_40px_rgba(226,36,31,0.6)]">
-                    {shareCardData.title}
+                  <h1 className="font-headline text-[72px] sm:text-[96px] leading-none font-black text-primary uppercase italic tracking-tighter drop-shadow-[0_0_40px_rgba(226,36,31,0.6)]">
+                    CAP
                   </h1>
-
-                  <p className="font-headline text-xl sm:text-2xl text-white font-bold leading-tight italic">
-                    {shareCardData.quote}
-                  </p>
                 </div>
 
                 <div className="p-6 text-center relative z-10 border-t border-white/5 bg-black/40">
