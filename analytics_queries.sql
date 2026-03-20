@@ -28,7 +28,7 @@ WITH summary AS (
 SELECT 
   total_visitors,
   claim_checkers,
-  round((claim_checkers::float / NULLIF(total_visitors, 0)::float) * 100, 2) || '%' as activation_rate
+  round((claim_checkers::numeric / NULLIF(total_visitors, 0)::numeric) * 100, 2) || '%' as activation_rate
 FROM summary;
 
 -- 5. Top Content (Most "Laughed At" Claims)

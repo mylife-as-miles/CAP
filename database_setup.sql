@@ -96,6 +96,81 @@ CREATE TABLE IF NOT EXISTS public.analytics_events (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Backfill columns for legacy installs where tables already existed
+ALTER TABLE IF EXISTS public.claims ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE IF EXISTS public.claims ADD COLUMN IF NOT EXISTS source_url TEXT;
+ALTER TABLE IF EXISTS public.claims ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Uncategorized';
+ALTER TABLE IF EXISTS public.claims ADD COLUMN IF NOT EXISTS confidence INTEGER DEFAULT 0;
+ALTER TABLE IF EXISTS public.claims ADD COLUMN IF NOT EXISTS reason_summary TEXT;
+ALTER TABLE IF EXISTS public.claims ADD COLUMN IF NOT EXISTS details TEXT;
+ALTER TABLE IF EXISTS public.claims ADD COLUMN IF NOT EXISTS sources JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE IF EXISTS public.claims ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE;
+ALTER TABLE IF EXISTS public.claims ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'published';
+ALTER TABLE IF EXISTS public.claims ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE IF EXISTS public.claims ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+UPDATE public.claims
+SET
+    category = COALESCE(category, 'Uncategorized'),
+    confidence = COALESCE(confidence, 0),
+    sources = COALESCE(sources, '[]'::jsonb),
+    is_featured = COALESCE(is_featured, FALSE),
+    status = COALESCE(status, 'published'),
+    created_at = COALESCE(created_at, NOW()),
+    updated_at = COALESCE(updated_at, NOW())
+WHERE
+    category IS NULL
+    OR confidence IS NULL
+    OR sources IS NULL
+    OR is_featured IS NULL
+    OR status IS NULL
+    OR created_at IS NULL
+    OR updated_at IS NULL;
+
+ALTER TABLE IF EXISTS public.claim_metrics ADD COLUMN IF NOT EXISTS share_count INTEGER DEFAULT 0;
+ALTER TABLE IF EXISTS public.claim_metrics ADD COLUMN IF NOT EXISTS view_count INTEGER DEFAULT 0;
+ALTER TABLE IF EXISTS public.claim_metrics ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+UPDATE public.claim_metrics
+SET
+    share_count = COALESCE(share_count, 0),
+    view_count = COALESCE(view_count, 0),
+    updated_at = COALESCE(updated_at, NOW())
+WHERE share_count IS NULL OR view_count IS NULL OR updated_at IS NULL;
+
+ALTER TABLE IF EXISTS public.claim_interactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE IF EXISTS public.app_visitors ADD COLUMN IF NOT EXISTS first_seen_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE IF EXISTS public.app_visitors ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE IF EXISTS public.app_visitors ADD COLUMN IF NOT EXISTS first_seen_path TEXT;
+ALTER TABLE IF EXISTS public.app_visitors ADD COLUMN IF NOT EXISTS user_agent TEXT;
+ALTER TABLE IF EXISTS public.app_visitors ADD COLUMN IF NOT EXISTS referrer TEXT;
+ALTER TABLE IF EXISTS public.app_visitors ADD COLUMN IF NOT EXISTS claims_checked_count INTEGER DEFAULT 0;
+ALTER TABLE IF EXISTS public.app_visitors ADD COLUMN IF NOT EXISTS shares_count INTEGER DEFAULT 0;
+ALTER TABLE IF EXISTS public.app_visitors ADD COLUMN IF NOT EXISTS laughs_count INTEGER DEFAULT 0;
+
+UPDATE public.app_visitors
+SET
+    first_seen_at = COALESCE(first_seen_at, NOW()),
+    last_seen_at = COALESCE(last_seen_at, NOW()),
+    claims_checked_count = COALESCE(claims_checked_count, 0),
+    shares_count = COALESCE(shares_count, 0),
+    laughs_count = COALESCE(laughs_count, 0)
+WHERE
+    first_seen_at IS NULL
+    OR last_seen_at IS NULL
+    OR claims_checked_count IS NULL
+    OR shares_count IS NULL
+    OR laughs_count IS NULL;
+
+ALTER TABLE IF EXISTS public.analytics_events ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE IF EXISTS public.analytics_events ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
+UPDATE public.analytics_events
+SET
+    metadata = COALESCE(metadata, '{}'::jsonb),
+    created_at = COALESCE(created_at, NOW())
+WHERE metadata IS NULL OR created_at IS NULL;
+
 -- 3. INDEXES & CONSTRAINTS
 CREATE INDEX IF NOT EXISTS idx_interactions_lookup ON public.claim_interactions (claim_id, visitor_id, interaction_type);
 
@@ -130,6 +205,7 @@ CREATE TRIGGER on_claim_created AFTER INSERT ON public.claims
 FOR EACH ROW EXECUTE FUNCTION public.handle_new_claim_metrics();
 
 -- 5. FUNCTIONAL LOGIC (RPCs)
+DROP FUNCTION IF EXISTS public.increment_laugh_count(UUID, TEXT);
 CREATE OR REPLACE FUNCTION public.increment_laugh_count(target_claim_id UUID, p_visitor_id TEXT)
 RETURNS TEXT AS $$
 DECLARE
@@ -153,6 +229,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+DROP FUNCTION IF EXISTS public.increment_share_count(UUID, TEXT);
 CREATE OR REPLACE FUNCTION public.increment_share_count(target_claim_id UUID, p_visitor_id TEXT)
 RETURNS TEXT AS $$
 DECLARE
@@ -176,6 +253,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+DROP FUNCTION IF EXISTS public.increment_view_count(UUID, TEXT);
 CREATE OR REPLACE FUNCTION public.increment_view_count(target_claim_id UUID, p_visitor_id TEXT)
 RETURNS TEXT AS $$
 DECLARE
@@ -199,6 +277,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+DROP FUNCTION IF EXISTS public.log_analytics_event(TEXT, TEXT, UUID, JSONB, TEXT, TEXT, TEXT);
 CREATE OR REPLACE FUNCTION public.log_analytics_event(
     p_visitor_id TEXT,
     p_event_name TEXT,
@@ -250,42 +329,66 @@ GRANT EXECUTE ON FUNCTION public.increment_view_count(UUID, TEXT) TO anon, authe
 GRANT EXECUTE ON FUNCTION public.log_analytics_event(TEXT, TEXT, UUID, JSONB, TEXT, TEXT, TEXT) TO anon, authenticated;
 
 -- 7. SEED DATA (Idempotent)
+UPDATE public.claims
+SET
+    slug = 'moon-landing-fake',
+    title = 'Moon Landing Logic',
+    claim_text = 'The moon landing was faked using early CGI from a time-traveling filmmaker.',
+    category = 'Science',
+    verdict = 'CAP',
+    confidence = 99,
+    reason_summary = 'CGI tech was non-existent in 1969. Filmmakers of the era were too young.',
+    details = 'Commercial CGI required to fake such footage did not exist until the 1980s.',
+    sources = '[{"name": "NASA", "url": "https://nasa.gov", "text": "Lunar samples and telemetry verify Apollo 11."}]'::jsonb,
+    is_featured = TRUE,
+    status = 'published'
+WHERE slug = 'moon-landing-fake' OR title = 'Moon Landing Logic';
+
 INSERT INTO public.claims (slug, title, claim_text, category, verdict, confidence, reason_summary, details, sources, is_featured, status)
-VALUES 
-(
-  'moon-landing-fake',
-  'Moon Landing Logic', 
-  'The moon landing was faked using early CGI from a time-traveling filmmaker.', 
-  'Science', 
-  'CAP', 
-  99, 
-  'CGI tech was non-existent in 1969. Filmmakers of the era were too young.',
-  'Commercial CGI required to fake such footage did not exist until the 1980s.',
-  '[{"name": "NASA", "url": "https://nasa.gov", "text": "Lunar samples and telemetry verify Apollo 11."}]'::jsonb,
-  TRUE, 
-  'published'
-),
-(
-  'salt-water-fatigue',
-  'Salt Water Fatigue', 
-  'Drinking 4L of salt water cures all winter fatigue instantly.', 
-  'Health', 
-  'CAP', 
-  95, 
-  'Excessive salt intake causes dehydration and hypernatremia.',
-  'Medical professionals warn that consuming excessive salt water can lead to severe dehydration.',
-  '[{"name": "WHO", "url": "https://who.int", "text": "Excessive sodium is linked to adverse health outcomes."}]'::jsonb,
-  FALSE, 
-  'published'
-)
-ON CONFLICT (slug) DO UPDATE SET
-    title = EXCLUDED.title,
-    claim_text = EXCLUDED.claim_text,
-    category = EXCLUDED.category,
-    verdict = EXCLUDED.verdict,
-    confidence = EXCLUDED.confidence,
-    reason_summary = EXCLUDED.reason_summary,
-    details = EXCLUDED.details,
-    sources = EXCLUDED.sources,
-    is_featured = EXCLUDED.is_featured,
-    status = EXCLUDED.status;
+SELECT
+    'moon-landing-fake',
+    'Moon Landing Logic',
+    'The moon landing was faked using early CGI from a time-traveling filmmaker.',
+    'Science',
+    'CAP',
+    99,
+    'CGI tech was non-existent in 1969. Filmmakers of the era were too young.',
+    'Commercial CGI required to fake such footage did not exist until the 1980s.',
+    '[{"name": "NASA", "url": "https://nasa.gov", "text": "Lunar samples and telemetry verify Apollo 11."}]'::jsonb,
+    TRUE,
+    'published'
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.claims WHERE slug = 'moon-landing-fake' OR title = 'Moon Landing Logic'
+);
+
+UPDATE public.claims
+SET
+    slug = 'salt-water-fatigue',
+    title = 'Salt Water Fatigue',
+    claim_text = 'Drinking 4L of salt water cures all winter fatigue instantly.',
+    category = 'Health',
+    verdict = 'CAP',
+    confidence = 95,
+    reason_summary = 'Excessive salt intake causes dehydration and hypernatremia.',
+    details = 'Medical professionals warn that consuming excessive salt water can lead to severe dehydration.',
+    sources = '[{"name": "WHO", "url": "https://who.int", "text": "Excessive sodium is linked to adverse health outcomes."}]'::jsonb,
+    is_featured = FALSE,
+    status = 'published'
+WHERE slug = 'salt-water-fatigue' OR title = 'Salt Water Fatigue';
+
+INSERT INTO public.claims (slug, title, claim_text, category, verdict, confidence, reason_summary, details, sources, is_featured, status)
+SELECT
+    'salt-water-fatigue',
+    'Salt Water Fatigue',
+    'Drinking 4L of salt water cures all winter fatigue instantly.',
+    'Health',
+    'CAP',
+    95,
+    'Excessive salt intake causes dehydration and hypernatremia.',
+    'Medical professionals warn that consuming excessive salt water can lead to severe dehydration.',
+    '[{"name": "WHO", "url": "https://who.int", "text": "Excessive sodium is linked to adverse health outcomes."}]'::jsonb,
+    FALSE,
+    'published'
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.claims WHERE slug = 'salt-water-fatigue' OR title = 'Salt Water Fatigue'
+);
