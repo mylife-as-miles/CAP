@@ -28,14 +28,14 @@ export function TrendCard({ type, category, time, claim, stats, onClick, onBadge
     <div
       onClick={onClick}
       className={cn(
-        "bg-surface rounded-3xl p-8 relative border-l-4 group hover:bg-surface-high transition-all cursor-pointer",
+        "bg-surface rounded-2xl sm:rounded-3xl p-5 sm:p-8 relative border-l-4 group hover:bg-surface-high transition-all cursor-pointer",
         type === 'CAP' ? "border-primary" : type === 'NO CAP' ? "border-secondary" : "border-tertiary"
       )}
     >
       <div
         onClick={onBadgeClick}
         className={cn(
-          "absolute top-6 right-6 font-headline font-black text-xs px-3 py-1 rounded-full transition-transform group-hover:rotate-0 uppercase",
+          "absolute top-4 sm:top-6 right-4 sm:right-6 font-headline font-black text-[10px] sm:text-xs px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full transition-transform group-hover:rotate-0 uppercase",
           badgeStyles[type],
           type === 'CAP' ? "rotate-3" : type === 'NO CAP' ? "-rotate-2" : "rotate-1",
           onBadgeClick ? "cursor-pointer hover:scale-105" : ""
@@ -43,10 +43,10 @@ export function TrendCard({ type, category, time, claim, stats, onClick, onBadge
       >
         {type}
       </div>
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <span className="font-label text-[10px] text-outline uppercase tracking-widest">{category} • {time}</span>
       </div>
-      <p className="font-headline text-2xl font-bold leading-tight mb-8">"{claim}"</p>
+      <p className="font-headline text-lg sm:text-2xl font-bold leading-tight mb-4 sm:mb-8">"{claim}"</p>
       <div className="flex items-center gap-3">
         <div className="flex -space-x-2">
           <div className="w-6 h-6 rounded-full bg-secondary ring-2 ring-surface" />

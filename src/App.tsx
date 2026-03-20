@@ -245,7 +245,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="pt-24 pb-32 px-6 max-w-7xl mx-auto">
+      <main className="pt-20 md:pt-24 pb-28 md:pb-32 px-4 md:px-6 max-w-7xl mx-auto">
         <AnimatePresence mode="wait">
           {screen === 'home' && (
             <motion.div
@@ -256,7 +256,7 @@ export default function App() {
               className="flex flex-col items-center"
             >
               {/* Hero Section */}
-              <div className="relative flex flex-col items-center mb-16 w-full max-w-2xl mt-12">
+              <div className="relative flex flex-col items-center mb-10 md:mb-16 w-full max-w-2xl mt-6 md:mt-12">
                 <div className="absolute -left-20 top-0 hidden xl:flex flex-col gap-4">
                   {['Is this true?', 'Red flags?', 'Should I trust this?'].map((text, i) => (
                     <button
@@ -280,7 +280,7 @@ export default function App() {
                 <MicOrb onClick={handleMicClick} />
 
                 <div className="mt-8 text-center">
-                  <h1 className="font-headline text-5xl md:text-7xl font-black uppercase tracking-tighter mb-4 text-white">
+                  <h1 className="font-headline text-4xl sm:text-5xl md:text-7xl font-black uppercase tracking-tighter mb-3 md:mb-4 text-white">
                     Tap to ask Cap
                   </h1>
                   <p className="font-body text-outline text-lg max-w-md mx-auto">
@@ -290,17 +290,17 @@ export default function App() {
               </div>
 
               {/* Input Section */}
-              <div className="w-full max-w-3xl mb-24">
+              <div className="w-full max-w-3xl mb-12 md:mb-24">
                 <div className="flex flex-col items-center gap-6">
                   <p className="font-label text-xs uppercase tracking-[0.3em] text-outline">Or paste a link below</p>
                   <div className="w-full relative flex flex-col items-center">
                     <div className={cn(
-                      "w-full relative flex items-center p-2 bg-surface rounded-full border transition-colors shadow-2xl",
+                      "w-full relative flex flex-col sm:flex-row items-stretch sm:items-center p-2 bg-surface rounded-2xl sm:rounded-full border transition-colors shadow-2xl gap-2 sm:gap-0",
                       inputError ? "border-red-500 focus-within:border-red-400" : "border-white/5 focus-within:border-primary/50"
                     )}>
                       <input
-                        className="w-full bg-transparent border-none focus:ring-0 px-8 py-4 font-body text-xl text-white placeholder:text-outline/50"
-                        placeholder="Paste a URL to check (e.g., https://news.com/article)"
+                        className="w-full bg-transparent border-none focus:ring-0 px-4 sm:px-8 py-3 sm:py-4 font-body text-base sm:text-xl text-white placeholder:text-outline/50"
+                        placeholder="Paste a URL to check..."
                         type="text"
                         value={inputValue}
                         onChange={(e) => {
@@ -311,7 +311,7 @@ export default function App() {
                       />
                       <button
                         onClick={handleCheck}
-                        className="bg-primary text-black font-headline font-black uppercase tracking-tighter px-10 py-4 rounded-full hover:bg-primary-dim transition-colors active:scale-95"
+                        className="bg-primary text-black font-headline font-black uppercase tracking-tighter px-8 sm:px-10 py-3 sm:py-4 rounded-full hover:bg-primary-dim transition-colors active:scale-95 text-sm sm:text-base"
                       >
                         Check
                       </button>
@@ -334,10 +334,10 @@ export default function App() {
 
               {/* Trending Section */}
               <div className="w-full">
-                <div className="flex justify-between items-end mb-8">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-6 md:mb-8">
                   <div>
-                    <span className="font-label text-xs uppercase tracking-[0.3em] text-primary mb-2 block">Trending Investigations</span>
-                    <h2 className="font-headline text-4xl font-black uppercase tracking-tighter">Top Caps</h2>
+                    <span className="font-label text-[10px] sm:text-xs uppercase tracking-[0.3em] text-primary mb-2 block">Trending Investigations</span>
+                    <h2 className="font-headline text-3xl sm:text-4xl font-black uppercase tracking-tighter">Top Caps</h2>
                   </div>
                   <button
                     onClick={() => setScreen('trends')}
@@ -446,20 +446,20 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="w-full max-w-5xl mx-auto"
             >
-              <div className="mb-16">
+              <div className="mb-8 md:mb-16">
                 <div className="inline-flex items-center gap-2 mb-4">
                   <span className="w-2 h-2 rounded-full bg-primary-dim animate-ping"></span>
                   <span className="font-label text-xs tracking-widest uppercase text-outline">Verifying Claim</span>
                 </div>
-                <h1 className="font-headline text-4xl md:text-6xl font-black tracking-tighter uppercase leading-none text-white">
+                <h1 className="font-headline text-2xl sm:text-4xl md:text-6xl font-black tracking-tighter uppercase leading-none text-white">
                   "{inputValue || "The 2024 economic projections suggest a 40% decrease in consumer spending."}"
                 </h1>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full items-start">
-                <div className="lg:col-span-7 flex flex-col gap-6">
-                  <div className="p-10 rounded-3xl bg-surface border-l-4 border-primary shadow-2xl relative overflow-hidden">
-                    <h2 className="font-headline text-3xl font-black uppercase tracking-tighter text-primary mb-8">Cap is checking...</h2>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-8 w-full items-start">
+                <div className="lg:col-span-7 flex flex-col gap-4 md:gap-6">
+                  <div className="p-6 md:p-10 rounded-2xl md:rounded-3xl bg-surface border-l-4 border-primary shadow-2xl relative overflow-hidden">
+                    <h2 className="font-headline text-xl sm:text-3xl font-black uppercase tracking-tighter text-primary mb-4 md:mb-8">Cap is checking...</h2>
                     <div className="space-y-8 relative">
                       <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-white/10"></div>
 
@@ -553,16 +553,16 @@ export default function App() {
               className="w-full max-w-7xl mx-auto relative"
             >
               <section className="flex flex-col items-center text-center mb-16">
-                <div className="relative w-full max-w-4xl bg-surface rounded-3xl overflow-hidden border-l-[4px] border-primary shadow-[0_0_60px_-15px_rgba(226,36,31,0.3)]">
-                  <div className="p-8 md:p-16 flex flex-col items-center">
+                <div className="relative w-full max-w-4xl bg-surface rounded-2xl md:rounded-3xl overflow-hidden border-l-[4px] border-primary shadow-[0_0_60px_-15px_rgba(226,36,31,0.3)]">
+                  <div className="p-6 sm:p-8 md:p-16 flex flex-col items-center">
                     <div className="flex items-center gap-3 mb-6">
                       <span className="font-label text-xs uppercase tracking-[0.2em] text-primary bg-primary/10 px-3 py-1 rounded-full">Confidence: High</span>
                       <span className="font-label text-xs uppercase tracking-[0.2em] text-outline">Ref ID: 8821-X</span>
                     </div>
-                    <div className="flex items-center justify-center gap-4 mb-4 relative group">
-                      <h1 className="font-headline text-[80px] md:text-[140px] leading-none font-black text-primary uppercase italic tracking-tighter">CAP</h1>
-                      <div className="relative cursor-help mt-4 md:mt-8">
-                        <Info size={32} className="text-outline group-hover:text-primary transition-colors" />
+                    <div className="flex items-center justify-center gap-2 sm:gap-4 mb-4 relative group">
+                      <h1 className="font-headline text-[56px] sm:text-[80px] md:text-[140px] leading-none font-black text-primary uppercase italic tracking-tighter">CAP</h1>
+                      <div className="relative cursor-help mt-2 sm:mt-4 md:mt-8">
+                        <Info size={24} className="text-outline group-hover:text-primary transition-colors sm:w-8 sm:h-8" />
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 w-64 p-4 bg-surface-high border border-white/10 rounded-2xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                           <p className="font-body text-sm text-white normal-case not-italic text-left font-normal">
                             Flagged as CAP due to significant contradictions with official documentation and verified pricing data.
@@ -571,7 +571,7 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-                    <p className="font-headline text-2xl md:text-3xl text-white max-w-2xl font-bold leading-tight italic mb-8">
+                    <p className="font-headline text-lg sm:text-2xl md:text-3xl text-white max-w-2xl font-bold leading-tight italic mb-4 sm:mb-8">
                       "The headline overstates what the sources actually support."
                     </p>
                     <div className="h-10 flex items-center justify-center gap-1.5 w-full max-w-sm opacity-60">
@@ -591,7 +591,7 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+              <section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-10 md:mb-16">
                 <div className="md:col-span-2 space-y-6">
                   <h3 className="font-headline text-xl uppercase tracking-widest text-outline mb-4 flex items-center gap-2">
                     <span className="w-8 h-[1px] bg-outline"></span>
@@ -601,7 +601,7 @@ export default function App() {
                     { id: '01', title: 'Official Documentation Gap', text: 'The original claim cites "Section 4.2" of the 2023 Federal Registry, but that section exclusively discusses agricultural subsidies, not urban development grants.' },
                     { id: '02', title: 'Pricing Page Contradiction', text: 'The "Unlimit" plan mentioned in the leak is listed on the public pricing page as a deprecated enterprise-only tier with a $5,000 minimum spend, contradicting the "free for all" claim.' }
                   ].map(item => (
-                    <div key={item.id} className="bg-surface-high p-8 rounded-3xl relative overflow-hidden group">
+                    <div key={item.id} className="bg-surface-high p-5 sm:p-8 rounded-2xl md:rounded-3xl relative overflow-hidden group">
                       <div className="absolute left-0 top-0 w-1 h-full bg-primary-dim opacity-40"></div>
                       <div className="flex gap-6 items-start">
                         <span className="font-label text-primary text-xl font-bold">{item.id}</span>
@@ -614,7 +614,7 @@ export default function App() {
                   ))}
                 </div>
 
-                <div className="bg-surface-high p-8 rounded-3xl flex flex-col justify-between">
+                <div className="bg-surface-high p-5 sm:p-8 rounded-2xl md:rounded-3xl flex flex-col justify-between">
                   <div>
                     <h3 className="font-headline text-xl uppercase tracking-widest text-outline mb-8">Metadata</h3>
                     <div className="space-y-6">
@@ -638,7 +638,7 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="mb-24">
+              <section className="mb-16 md:mb-24">
                 <h3 className="font-headline text-xl uppercase tracking-widest text-outline mb-8 flex items-center gap-2">
                   <span className="w-8 h-[1px] bg-outline"></span>
                   Top 3 Influential Sources
@@ -666,11 +666,11 @@ export default function App() {
                 </div>
               </section>
 
-              <div className="fixed bottom-0 left-0 w-full z-40 px-6 pb-12 pt-12 bg-gradient-to-t from-background via-background/90 to-transparent pointer-events-none">
-                <div className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row flex-nowrap gap-4 justify-center items-center pointer-events-auto">
+              <div className="fixed bottom-0 left-0 w-full z-40 px-3 sm:px-6 pb-20 md:pb-12 pt-8 md:pt-12 bg-gradient-to-t from-background via-background/90 to-transparent pointer-events-none">
+                <div className="w-full max-w-7xl mx-auto grid grid-cols-2 sm:flex sm:flex-row sm:flex-nowrap gap-2 sm:gap-4 justify-center items-center pointer-events-auto">
                   <button
                     onClick={handleShare}
-                    className="w-full lg:w-auto px-6 py-4 text-sm bg-surface-high text-white font-headline font-black uppercase tracking-widest rounded-full hover:bg-white/10 transition-all flex items-center justify-center gap-3 active:scale-95 whitespace-nowrap"
+                    className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm bg-surface-high text-white font-headline font-black uppercase tracking-widest rounded-full hover:bg-white/10 transition-all flex items-center justify-center gap-2 sm:gap-3 active:scale-95 whitespace-nowrap"
                   >
                     <Share2 size={20} />
                     Share Result
@@ -679,7 +679,7 @@ export default function App() {
                     onClick={handleAddToTopCaps}
                     disabled={isAddedToTopCaps}
                     className={cn(
-                      "w-full lg:w-auto px-6 py-4 text-sm font-headline font-black uppercase tracking-widest rounded-full transition-all flex items-center justify-center gap-3 active:scale-95 whitespace-nowrap",
+                      "px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-headline font-black uppercase tracking-widest rounded-full transition-all flex items-center justify-center gap-2 sm:gap-3 active:scale-95 whitespace-nowrap",
                       isAddedToTopCaps
                         ? "bg-surface-high text-primary border border-primary/30 cursor-default"
                         : "bg-primary text-black hover:bg-primary-dim shadow-[0_0_25px_rgba(255,142,128,0.4)]"
@@ -692,7 +692,7 @@ export default function App() {
                     onClick={() => setIsFlagged(true)}
                     disabled={isFlagged}
                     className={cn(
-                      "w-full lg:w-auto px-6 py-4 text-sm font-headline font-black uppercase tracking-widest rounded-full transition-all flex items-center justify-center gap-3 active:scale-95 whitespace-nowrap",
+                      "px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-headline font-black uppercase tracking-widest rounded-full transition-all flex items-center justify-center gap-2 sm:gap-3 active:scale-95 whitespace-nowrap",
                       isFlagged
                         ? "bg-surface-high text-outline border border-white/10 cursor-default"
                         : "bg-surface text-white hover:bg-surface-high border border-white/10"
@@ -709,7 +709,7 @@ export default function App() {
                       setIsAddedToTopCaps(false);
                       setIsFlagged(false);
                     }}
-                    className="w-full lg:w-auto px-6 py-4 text-sm bg-white text-black font-headline font-black uppercase tracking-widest rounded-full hover:opacity-90 transition-all flex items-center justify-center gap-3 active:scale-95 whitespace-nowrap"
+                    className="col-span-2 sm:col-span-1 px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm bg-white text-black font-headline font-black uppercase tracking-widest rounded-full hover:opacity-90 transition-all flex items-center justify-center gap-2 sm:gap-3 active:scale-95 whitespace-nowrap"
                   >
                     <RefreshCw size={20} />
                     Check Another
@@ -729,7 +729,7 @@ export default function App() {
             >
               <div className="text-center mb-16">
                 <span className="font-label text-xs uppercase tracking-[0.3em] text-primary mb-4 block">Hall of Shame</span>
-                <h1 className="font-headline text-5xl md:text-7xl font-black uppercase italic tracking-tighter mb-6 text-white">Top Caps</h1>
+                <h1 className="font-headline text-4xl sm:text-5xl md:text-7xl font-black uppercase italic tracking-tighter mb-4 sm:mb-6 text-white">Top Caps</h1>
                 <p className="text-outline font-body text-lg max-w-2xl mx-auto">
                   A leaderboard of the wildest, most delusional claims Cap has checked.
                 </p>
@@ -744,7 +744,7 @@ export default function App() {
                 <motion.div
                   animate={{ boxShadow: ['0 0 0 rgba(226,36,31,0)', '0 0 20px rgba(226,36,31,0.3)', '0 0 0 rgba(226,36,31,0)'] }}
                   transition={{ duration: 2, repeat: Infinity }}
-                  className="bg-surface-high border-2 border-primary/50 rounded-3xl p-8 relative"
+                  className="bg-surface-high border-2 border-primary/50 rounded-2xl sm:rounded-3xl p-5 sm:p-8 relative"
                 >
                   {/* Shimmer effect */}
                   <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
