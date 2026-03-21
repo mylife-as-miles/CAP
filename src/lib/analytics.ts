@@ -14,7 +14,11 @@ export type AnalyticsEvent =
     | 'share_clicked'
     | 'top_caps_viewed'
     | 'voice_session_started'
-    | 'voice_session_completed';
+    | 'voice_session_completed'
+    | 'detail_opened'
+    | 'source_clicked'
+    | 'verdict_replayed'
+    | 'dwell_quality_reported';
 
 interface EventMetadata {
     [key: string]: any;
@@ -61,4 +65,38 @@ export async function trackEvent(
  */
 export function initAnalytics() {
     trackEvent('session_started');
+}
+
+function getWindowScopedKey(namespace: string, claimId?: string) {
+    return claimId ? `cap:${namespace}:${claimId}` : `cap:${namespace}`;
+}
+
+export function hasTrackedInWindow(namespace: string, claimId?: string) {
+    if (typeof window === 'undefined') {
+        return false;
+    }
+
+    return window.sessionStorage.getItem(getWindowScopedKey(namespace, claimId)) === '1';
+}
+
+export function markTrackedInWindow(namespace: string, claimId?: string) {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    window.sessionStorage.setItem(getWindowScopedKey(namespace, claimId), '1');
+}
+
+export async function trackEventOncePerWindow(
+    namespace: string,
+    name: AnalyticsEvent,
+    claimId?: string,
+    metadata: EventMetadata = {},
+) {
+    if (hasTrackedInWindow(namespace, claimId)) {
+        return;
+    }
+
+    markTrackedInWindow(namespace, claimId);
+    await trackEvent(name, claimId, metadata);
 }

@@ -22,35 +22,17 @@ import {
   type HistoryEntry,
 } from '@/src/lib/browserStore';
 import { buildResultViewFromCheck, buildResultViewFromClaim, type ResultViewModel } from '@/src/lib/resultView';
+import { getCapOfDay, getTopCapsBoard, getTrendingCaps } from '@/src/lib/feedApi';
 import { supabase } from '@/src/lib/supabase';
 import { cn } from '@/src/lib/utils';
 import { getOrCreateVisitorId } from '@/src/lib/session';
-import { trackEvent, initAnalytics } from '@/src/lib/analytics';
+import { trackEvent, trackEventOncePerWindow, initAnalytics } from '@/src/lib/analytics';
 import { CAP_DEFAULT_QUESTION } from '@/shared/cap';
+import type { RankedClaim, TopCapsBoardMode } from '@/shared/leaderboard';
 
 type Screen = 'home' | 'listening' | 'checking' | 'results' | 'top' | 'history' | 'profile' | 'notifications' | 'trends';
-type ClaimTarget = 'featured' | string;
-
-interface ClaimMetrics {
-  laugh_count: number;
-  share_count: number;
-  view_count: number;
-}
-
-interface Claim {
-  id: string;
-  title: string;
-  claim_text: string;
-  category: string;
-  verdict: 'CAP' | 'NO CAP' | 'HALF CAP';
-  confidence: number;
-  reason_summary: string;
-  details?: string;
-  sources?: { name: string; url: string; text?: string }[];
-  is_featured: boolean;
-  created_at: string;
-  claim_metrics: ClaimMetrics;
-}
+type ClaimTarget = 'cap-of-day' | string;
+type TopCapsSortBy = 'Top Caps' | 'Caught in 4K' | 'Date Added';
 
 type ShareCardData = {
   footer: string;
@@ -74,6 +56,18 @@ function sortByCreatedAtDesc<T extends { createdAt: string }>(items: T[]) {
   return [...items].sort((left, right) => (
     new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
   ));
+}
+
+function mapSortToBoardMode(sortBy: TopCapsSortBy): TopCapsBoardMode {
+  if (sortBy === 'Caught in 4K') {
+    return 'caught_in_4k';
+  }
+
+  if (sortBy === 'Date Added') {
+    return 'date_added';
+  }
+
+  return 'top_caps';
 }
 
 const RESULT_THEME = {
@@ -119,7 +113,7 @@ export default function App() {
   const toastTimeoutRef = useRef<number | null>(null);
   const [laughCelebrations, setLaughCelebrations] = useState<Record<string, number>>({});
 
-  const [topCapsSortBy, setTopCapsSortBy] = useState<'Shares' | 'Laughed At' | 'Date Added'>('Shares');
+  const [topCapsSortBy, setTopCapsSortBy] = useState<TopCapsSortBy>('Top Caps');
   const [topCapsFilterCategory, setTopCapsFilterCategory] = useState<string>('All');
   const [followedCategories, setFollowedCategories] = useState<string[]>([]);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
@@ -128,8 +122,10 @@ export default function App() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
-  const [featuredCap, setFeaturedCap] = useState<Claim | null>(null);
-  const [topCapsData, setTopCapsData] = useState<Claim[]>([]);
+  const [capOfDay, setCapOfDay] = useState<RankedClaim | null>(null);
+  const [trendingCaps, setTrendingCaps] = useState<RankedClaim[]>([]);
+  const [leaderboardCaps, setLeaderboardCaps] = useState<RankedClaim[]>([]);
+  const [leaderboardCategoryOptions, setLeaderboardCategoryOptions] = useState<string[]>([]);
   const [expandedCards, setExpandedCards] = useState<string[]>([]);
   const [activeResult, setActiveResult] = useState<ActiveResultState | null>(null);
   const [activeCheckLabel, setActiveCheckLabel] = useState('');
@@ -154,48 +150,35 @@ export default function App() {
   const activeConversationIdRef = useRef<string | null>(null);
   const historyEntriesRef = useRef<HistoryEntry[]>([]);
   const alertEntriesRef = useRef<AlertEntry[]>([]);
+  const dwellVisibleSinceRef = useRef<number | null>(null);
+  const dwellVisibleMsRef = useRef(0);
 
   // Voice Auto-Hangup State machine
   const [voiceHangupState, setVoiceHangupState] = useState<'idle' | 'waiting_for_speech' | 'waiting_for_silence'>('idle');
 
-  const fetchClaims = async () => {
+  const refreshFeeds = async () => {
     try {
       setIsLoading(true);
       setDataError(null);
 
-      // Fetch Top Caps (Both for list and hero selection)
-      const { data: topData, error: topError } = await supabase
-        .from('claims')
-        .select('*, claim_metrics(*)')
-        .eq('status', 'published')
-        .order('created_at', { ascending: false });
+      const boardMode = mapSortToBoardMode(topCapsSortBy);
+      const selectedCategory = topCapsFilterCategory === 'All' ? undefined : topCapsFilterCategory;
 
-      if (topError) throw topError;
+      const [nextTrendingCaps, nextCapOfDay, nextLeaderboardCaps, categoryCatalog] = await Promise.all([
+        getTrendingCaps(24),
+        getCapOfDay(),
+        getTopCapsBoard(boardMode, selectedCategory, 100),
+        getTopCapsBoard('top_caps', undefined, 200),
+      ]);
 
-      // Client-side deduplication as a safety fallback
-      const uniqueClaims = (topData || []).reduce((acc: any[], current: any) => {
-        const x = acc.find(item => item.slug === current.slug);
-        if (!x) {
-          return acc.concat([current]);
-        } else {
-          return acc;
-        }
-      }, []);
-
-      if (uniqueClaims.length > 0) {
-        // Sort by total engagement to find the absolute community winner
-        const sortedByEngagement = [...uniqueClaims].sort((a, b) => {
-          const scoreA = (a.claim_metrics?.share_count ?? 0) + (a.claim_metrics?.laugh_count ?? 0);
-          const scoreB = (b.claim_metrics?.share_count ?? 0) + (b.claim_metrics?.laugh_count ?? 0);
-          return scoreB - scoreA;
-        });
-        setFeaturedCap(sortedByEngagement[0]);
-      } else {
-        setFeaturedCap(null);
-      }
-
-      setTopCapsData(uniqueClaims);
-
+      setTrendingCaps(nextTrendingCaps);
+      setCapOfDay(nextCapOfDay);
+      setLeaderboardCaps(nextLeaderboardCaps);
+      setLeaderboardCategoryOptions(Array.from(new Set(
+        categoryCatalog
+          .map((item) => item.category)
+          .filter((value): value is string => Boolean(value)),
+      )));
     } catch (err: any) {
       console.error('Supabase fetch error:', err);
       setDataError('Could not sync with the global leaderboard.');
@@ -398,9 +381,12 @@ export default function App() {
 
   useEffect(() => {
     initAnalytics();
-    void fetchClaims();
     void loadLocalData();
   }, []);
+
+  useEffect(() => {
+    void refreshFeeds();
+  }, [topCapsFilterCategory, topCapsSortBy]);
 
   useEffect(() => {
     if (screen === 'top' || screen === 'trends') {
@@ -420,6 +406,57 @@ export default function App() {
     }
   }, [screen]);
 
+  useEffect(() => {
+    const claimId = activeResult?.publishedClaimId ?? activeResult?.view.claimId;
+    if (screen !== 'results' || !claimId) {
+      return;
+    }
+
+    const updateVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        if (dwellVisibleSinceRef.current !== null) {
+          dwellVisibleMsRef.current += Date.now() - dwellVisibleSinceRef.current;
+          dwellVisibleSinceRef.current = null;
+        }
+        return;
+      }
+
+      if (dwellVisibleSinceRef.current === null) {
+        dwellVisibleSinceRef.current = Date.now();
+      }
+    };
+
+    dwellVisibleMsRef.current = 0;
+    dwellVisibleSinceRef.current = document.visibilityState === 'visible' ? Date.now() : null;
+    document.addEventListener('visibilitychange', updateVisibility);
+
+    return () => {
+      document.removeEventListener('visibilitychange', updateVisibility);
+
+      if (dwellVisibleSinceRef.current !== null) {
+        dwellVisibleMsRef.current += Date.now() - dwellVisibleSinceRef.current;
+      }
+
+      const visibleMs = Math.max(0, dwellVisibleMsRef.current);
+      const qualityScore = Math.max(0, Math.min(1, Number((visibleMs / 12000).toFixed(3))));
+
+      dwellVisibleMsRef.current = 0;
+      dwellVisibleSinceRef.current = null;
+
+      void trackEvent('dwell_quality_reported', claimId, {
+        qualityScore,
+        source: activeResult?.source ?? 'published-claim',
+        visibleMs,
+      });
+    };
+  }, [
+    activeResult?.historyEntryId,
+    activeResult?.publishedClaimId,
+    activeResult?.source,
+    activeResult?.view.claimId,
+    screen,
+  ]);
+
   const showToast = (message: string) => {
     setShowNotificationToast(message);
     if (toastTimeoutRef.current) {
@@ -427,6 +464,29 @@ export default function App() {
     }
     toastTimeoutRef.current = window.setTimeout(() => setShowNotificationToast(null), 3000);
   };
+
+  const patchClaimCollections = (claimId: string, updater: (claim: RankedClaim) => RankedClaim) => {
+    setCapOfDay((current) => (current?.id === claimId ? updater(current) : current));
+    setTrendingCaps((current) => current.map((claim) => (claim.id === claimId ? updater(claim) : claim)));
+    setLeaderboardCaps((current) => current.map((claim) => (claim.id === claimId ? updater(claim) : claim)));
+  };
+
+  const getClaimById = (claimId: string) => {
+    if (capOfDay?.id === claimId) {
+      return capOfDay;
+    }
+
+    return leaderboardCaps.find((claim) => claim.id === claimId)
+      ?? trendingCaps.find((claim) => claim.id === claimId);
+  };
+
+  const bumpClaimMetric = (claim: RankedClaim, metric: keyof RankedClaim['claim_metrics']) => ({
+    ...claim,
+    claim_metrics: {
+      ...claim.claim_metrics,
+      [metric]: claim.claim_metrics[metric] + 1,
+    },
+  });
 
   const resetResultFlags = () => {
     setShareCardData(null);
@@ -532,9 +592,13 @@ export default function App() {
     }
   };
 
-  const openStoredClaimResult = (claim: Claim) => {
+  const openStoredClaimResult = async (
+    claim: RankedClaim,
+    source: 'home_trending' | 'trends' | 'top_board',
+  ) => {
     resetResultFlags();
     setActiveCheckLabel(claim.claim_text);
+    await handleViewClaim(claim.id, source, true);
     setActiveResult({
       publishedClaimId: claim.id,
       source: 'published-claim',
@@ -543,13 +607,17 @@ export default function App() {
     setScreen('results');
   };
 
-  const openHistoryEntryResult = (entry: HistoryEntry) => {
+  const openHistoryEntryResult = async (entry: HistoryEntry) => {
     resetResultFlags();
     setActiveCheckLabel(entry.result.claimText);
+    const publishedClaimId = entry.publishedClaimId ?? entry.result.claimId;
+    if (publishedClaimId) {
+      await handleViewClaim(publishedClaimId, 'history', true);
+    }
     setActiveResult({
       checkContext: entry.context,
       historyEntryId: entry.id,
-      publishedClaimId: entry.publishedClaimId ?? entry.result.claimId,
+      publishedClaimId,
       source: 'history',
       view: entry.result,
     });
@@ -604,88 +672,104 @@ export default function App() {
   }, [voiceHangupState, isSpeaking, voiceStatus, endVoiceSession]);
 
   const triggerLaughCelebration = (target: ClaimTarget) => {
-    const celebrationKey = target === 'featured' ? 'featured' : `leaderboard-${target}`;
+    const celebrationKey = target === 'cap-of-day' ? 'cap-of-day' : `leaderboard-${target}`;
     setLaughCelebrations((prev) => ({
       ...prev,
       [celebrationKey]: (prev[celebrationKey] ?? 0) + 1,
     }));
   };
 
-  const buildClaimShareCard = (claim: Claim): ShareCardData => ({
+  const buildClaimShareCard = (claim: RankedClaim): ShareCardData => ({
     footer: 'Pulled from CAP\'s live leaderboard.',
     shareText: `${claim.verdict}\n"${claim.claim_text}"`,
     shareTitle: 'CAP',
   });
 
-  const openResultShareCard = () => {
+  const openResultShareCard = async () => {
     if (!activeResult) {
       return;
     }
 
     setIsShared(false);
-    trackEvent('share_clicked', activeResult.publishedClaimId ?? activeResult.view.claimId, { source: 'result_screen' });
     setShareCardData(activeResult.view.share);
+
+    const publishedClaimId = activeResult.publishedClaimId ?? activeResult.view.claimId;
+    if (!publishedClaimId) {
+      return;
+    }
+
+    const currentClaim = getClaimById(publishedClaimId);
+    const previousCapOfDay = capOfDay;
+    const previousTrendingCaps = trendingCaps;
+    const previousLeaderboardCaps = leaderboardCaps;
+
+    if (currentClaim) {
+      patchClaimCollections(publishedClaimId, (claim) => bumpClaimMetric(claim, 'share_count'));
+    }
+
+    const { data, error } = await supabase.rpc('increment_share_count', {
+      target_claim_id: publishedClaimId,
+      p_visitor_id: getOrCreateVisitorId(),
+    });
+
+    if (!error && data === 'counted') {
+      void trackEvent('share_clicked', publishedClaimId, { source: 'result_screen' });
+      if (currentClaim) {
+        void applyTrackedClaimBaseline(publishedClaimId, {
+          laughCount: currentClaim.claim_metrics.laugh_count,
+          shareCount: currentClaim.claim_metrics.share_count + 1,
+        });
+      }
+      return;
+    }
+
+    setCapOfDay(previousCapOfDay);
+    setTrendingCaps(previousTrendingCaps);
+    setLeaderboardCaps(previousLeaderboardCaps);
+
+    if (data === 'rate_limited') {
+      showToast("Take a breath! You're sharing too fast.");
+    }
   };
 
   const openClaimShareCard = async (target: ClaimTarget) => {
     setIsShared(false);
     const visitorId = getOrCreateVisitorId();
 
-    // Optimistic Update
-    if (target === 'featured' && featuredCap) {
-      const prevFeatured = { ...featuredCap };
-      setFeaturedCap({
-        ...featuredCap,
-        claim_metrics: { ...featuredCap.claim_metrics, share_count: featuredCap.claim_metrics.share_count + 1 }
-      });
-      setShareCardData(buildClaimShareCard(featuredCap));
+    const currentClaim = target === 'cap-of-day'
+      ? capOfDay
+      : getClaimById(target);
 
-      const { data, error } = await supabase.rpc('increment_share_count', {
-        target_claim_id: featuredCap.id,
-        p_visitor_id: visitorId
-      });
-
-      if (!error && data === 'counted') {
-        trackEvent('share_clicked', featuredCap.id, { source: 'featured_card' });
-        void applyTrackedClaimBaseline(featuredCap.id, {
-          laughCount: featuredCap.claim_metrics.laugh_count,
-          shareCount: featuredCap.claim_metrics.share_count + 1,
-        });
-      }
-
-      if (error || data === 'rate_limited') {
-        setFeaturedCap(prevFeatured);
-        if (data === 'rate_limited') showToast("Take a breath! You're sharing too fast.");
-      }
+    if (!currentClaim) {
       return;
     }
 
-    const currentClaim = topCapsData.find((item) => item.id === target);
-    if (!currentClaim) return;
+    const previousCapOfDay = capOfDay;
+    const previousTrendingCaps = trendingCaps;
+    const previousLeaderboardCaps = leaderboardCaps;
 
-    const prevData = [...topCapsData];
-    setTopCapsData(prev => prev.map(item => item.id === target ? {
-      ...item,
-      claim_metrics: { ...item.claim_metrics, share_count: item.claim_metrics.share_count + 1 }
-    } : item));
-
+    patchClaimCollections(currentClaim.id, (claim) => bumpClaimMetric(claim, 'share_count'));
     setShareCardData(buildClaimShareCard(currentClaim));
 
     const { data, error } = await supabase.rpc('increment_share_count', {
-      target_claim_id: target,
+      target_claim_id: currentClaim.id,
       p_visitor_id: visitorId
     });
 
     if (!error && data === 'counted') {
-      trackEvent('share_clicked', target, { source: 'leaderboard' });
-      void applyTrackedClaimBaseline(target, {
+      void trackEvent('share_clicked', currentClaim.id, {
+        source: target === 'cap-of-day' ? 'cap_of_day' : 'leaderboard',
+      });
+      void applyTrackedClaimBaseline(currentClaim.id, {
         laughCount: currentClaim.claim_metrics.laugh_count,
         shareCount: currentClaim.claim_metrics.share_count + 1,
       });
     }
 
     if (error || data === 'rate_limited') {
-      setTopCapsData(prevData);
+      setCapOfDay(previousCapOfDay);
+      setTrendingCaps(previousTrendingCaps);
+      setLeaderboardCaps(previousLeaderboardCaps);
       if (data === 'rate_limited') showToast("Take a breath! You're sharing too fast.");
     }
   };
@@ -695,78 +779,95 @@ export default function App() {
     triggerLaughCelebration(target);
     const visitorId = getOrCreateVisitorId();
 
-    // Optimistic Update
-    if (target === 'featured' && featuredCap) {
-      const prevFeatured = { ...featuredCap };
-      setFeaturedCap({
-        ...featuredCap,
-        claim_metrics: { ...featuredCap.claim_metrics, laugh_count: featuredCap.claim_metrics.laugh_count + 1 }
-      });
-
-      const { data, error } = await supabase.rpc('increment_laugh_count', {
-        target_claim_id: featuredCap.id,
-        p_visitor_id: visitorId
-      });
-
-      if (!error && data === 'counted') {
-        trackEvent('laugh_clicked', featuredCap.id, { source: 'featured_card' });
-        void applyTrackedClaimBaseline(featuredCap.id, {
-          laughCount: featuredCap.claim_metrics.laugh_count + 1,
-          shareCount: featuredCap.claim_metrics.share_count,
-        });
-      }
-
-      if (error || data === 'already_counted') {
-        if (data === 'already_counted') {
-          // Keep the visual vibe but don't increment the number if they already laughed
-          setFeaturedCap(prevFeatured);
-        } else {
-          setFeaturedCap(prevFeatured);
-        }
-      }
-      return;
-    }
-
-    const currentClaim = topCapsData.find((item) => item.id === target);
+    const currentClaim = target === 'cap-of-day'
+      ? capOfDay
+      : getClaimById(target);
     if (!currentClaim) {
       return;
     }
 
-    const prevData = [...topCapsData];
-    setTopCapsData(prev => prev.map(item => item.id === target ? {
-      ...item,
-      claim_metrics: { ...item.claim_metrics, laugh_count: item.claim_metrics.laugh_count + 1 }
-    } : item));
+    const previousCapOfDay = capOfDay;
+    const previousTrendingCaps = trendingCaps;
+    const previousLeaderboardCaps = leaderboardCaps;
+
+    patchClaimCollections(currentClaim.id, (claim) => bumpClaimMetric(claim, 'laugh_count'));
 
     const { data, error } = await supabase.rpc('increment_laugh_count', {
-      target_claim_id: target,
+      target_claim_id: currentClaim.id,
       p_visitor_id: visitorId
     });
 
     if (!error && data === 'counted') {
-      trackEvent('laugh_clicked', target, { source: 'leaderboard' });
-      void applyTrackedClaimBaseline(target, {
+      void trackEvent('laugh_clicked', currentClaim.id, {
+        source: target === 'cap-of-day' ? 'cap_of_day' : 'leaderboard',
+      });
+      void applyTrackedClaimBaseline(currentClaim.id, {
         laughCount: currentClaim.claim_metrics.laugh_count + 1,
         shareCount: currentClaim.claim_metrics.share_count,
       });
     }
 
     if (error || data === 'already_counted') {
-      setTopCapsData(prevData);
+      setCapOfDay(previousCapOfDay);
+      setTrendingCaps(previousTrendingCaps);
+      setLeaderboardCaps(previousLeaderboardCaps);
     }
   };
 
-  const handleViewClaim = async (claimId: string) => {
+  const handleViewClaim = async (
+    claimId: string,
+    source: 'home_trending' | 'trends' | 'top_board' | 'history',
+    trackReplay = false,
+  ) => {
     const visitorId = getOrCreateVisitorId();
-    await supabase.rpc('increment_view_count', {
+    const previousCapOfDay = capOfDay;
+    const previousTrendingCaps = trendingCaps;
+    const previousLeaderboardCaps = leaderboardCaps;
+
+    if (getClaimById(claimId)) {
+      patchClaimCollections(claimId, (claim) => bumpClaimMetric(claim, 'view_count'));
+    }
+
+    const { data, error } = await supabase.rpc('increment_view_count', {
       target_claim_id: claimId,
-      p_visitor_id: visitorId
+      p_visitor_id: visitorId,
     });
-    trackEvent('verdict_viewed', claimId);
+
+    if (error || data === 'already_counted') {
+      setCapOfDay(previousCapOfDay);
+      setTrendingCaps(previousTrendingCaps);
+      setLeaderboardCaps(previousLeaderboardCaps);
+    }
+
+    void trackEvent('verdict_viewed', claimId, { source });
+    if (trackReplay) {
+      void trackEvent('verdict_replayed', claimId, { source });
+    }
   };
 
   const toggleExpand = (id: string) => {
-    setExpandedCards(prev => prev.includes(id) ? prev.filter(cardId => cardId !== id) : [...prev, id]);
+    setExpandedCards((prev) => {
+      const isExpanded = prev.includes(id);
+      if (!isExpanded) {
+        void trackEventOncePerWindow('detail-opened', 'detail_opened', id, { source: 'top_board' });
+      }
+      return isExpanded ? prev.filter((cardId) => cardId !== id) : [...prev, id];
+    });
+  };
+
+  const handleSourceClick = (
+    claimId: string | undefined,
+    sourceUrl: string,
+    source: 'result_sources' | 'leaderboard_sources',
+  ) => {
+    if (!claimId) {
+      return;
+    }
+
+    void trackEvent('source_clicked', claimId, {
+      source,
+      sourceUrl,
+    });
   };
 
   const toggleFollowCategory = (e: React.MouseEvent, category: string) => {
@@ -784,7 +885,7 @@ export default function App() {
   };
 
   const resetFilters = () => {
-    setTopCapsSortBy('Shares');
+    setTopCapsSortBy('Top Caps');
     setTopCapsFilterCategory('All');
   };
 
@@ -805,37 +906,17 @@ export default function App() {
     })));
   };
 
-  const filteredAndSortedTopCaps = topCapsData
-    .filter(item => topCapsFilterCategory === 'All' || item.category === topCapsFilterCategory)
-    .sort((a, b) => {
-      if (topCapsSortBy === 'Shares') {
-        const diff = b.claim_metrics.share_count - a.claim_metrics.share_count;
-        if (diff !== 0) return diff;
-        const laughDiff = b.claim_metrics.laugh_count - a.claim_metrics.laugh_count;
-        if (laughDiff !== 0) return laughDiff;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }
-      if (topCapsSortBy === 'Laughed At') {
-        const diff = b.claim_metrics.laugh_count - a.claim_metrics.laugh_count;
-        if (diff !== 0) return diff;
-        const shareDiff = b.claim_metrics.share_count - a.claim_metrics.share_count;
-        if (shareDiff !== 0) return shareDiff;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }
-      if (topCapsSortBy === 'Date Added') {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      }
-      return 0;
-    });
-
   const topCapCategories: string[] = [
     'All',
-    ...Array.from(new Set<string>(
-      topCapsData
-        .map((item) => item.category)
-        .filter((value): value is string => Boolean(value)),
-    )),
+    ...leaderboardCategoryOptions,
   ];
+  const visibleLeaderboardCaps = leaderboardCaps;
+  const leaderboardSectionTitle = topCapsSortBy === 'Caught in 4K'
+    ? 'Caught in 4K'
+    : topCapsSortBy === 'Date Added'
+      ? 'Latest Caps'
+      : 'Top Caps';
+  const LeaderboardSectionIcon = topCapsSortBy === 'Caught in 4K' ? Camera : Flame;
 
   const formatNumber = (num: number) => {
     return num >= 1000 ? (num / 1000).toFixed(1) + 'k' : num.toString();
@@ -1065,7 +1146,7 @@ export default function App() {
         }
         : current);
 
-      void fetchClaims();
+      void refreshFeeds();
       showToast(response.created ? 'Added to Top Caps.' : 'This result is already live in Top Caps.');
     } catch (error) {
       console.error('Failed to add result to Top Caps', error);
@@ -1250,7 +1331,7 @@ export default function App() {
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-6 md:mb-8">
                   <div>
                     <span className="font-label text-[10px] sm:text-xs uppercase tracking-[0.3em] text-primary mb-2 block">Trending Investigations</span>
-                    <h2 className="font-headline text-3xl sm:text-4xl font-black uppercase tracking-tighter">Top Caps</h2>
+                    <h2 className="font-headline text-3xl sm:text-4xl font-black uppercase tracking-tighter">Trending Caps</h2>
                   </div>
                   <button
                     onClick={() => setScreen('trends')}
@@ -1265,22 +1346,20 @@ export default function App() {
                     [1, 2, 3].map(i => (
                       <div key={i} className="bg-surface h-64 rounded-3xl animate-pulse border border-white/5" />
                     ))
-                  ) : topCapsData.length > 0 ? (
-                    topCapsData.slice(0, 3).map(item => (
+                  ) : trendingCaps.length > 0 ? (
+                    trendingCaps.slice(0, 3).map(item => (
                       <TrendCard
                         key={item.id}
                         type={item.verdict}
                         category={item.category}
                         time={formatRelativeTime(item.created_at)}
                         claim={item.claim_text}
-                        stats={`${formatNumber(item.claim_metrics.view_count)} views`}
-                        onClick={async () => {
-                          await handleViewClaim(item.id);
-                          openStoredClaimResult(item);
+                        stats={`${formatNumber(item.claim_metrics.share_count)} shares • ${formatNumber(item.claim_metrics.laugh_count)} laughs`}
+                        onClick={() => {
+                          void openStoredClaimResult(item, 'home_trending');
                         }}
                         onBadgeClick={(e) => {
                           e.stopPropagation();
-                          handleViewClaim(item.id);
                           setScreen('top');
                         }}
                       />
@@ -1596,7 +1675,14 @@ export default function App() {
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       {resultView.sources.length > 0 ? resultView.sources.map((source, i) => (
-                        <a key={i} href={source.url} target="_blank" rel="noopener noreferrer" className="bg-surface p-6 rounded-3xl hover:bg-surface-high transition-all group border border-transparent hover:border-white/10 flex flex-col h-full">
+                        <a
+                          key={i}
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => handleSourceClick(activeResult?.publishedClaimId ?? activeResult?.view.claimId, source.url, 'result_sources')}
+                          className="bg-surface p-6 rounded-3xl hover:bg-surface-high transition-all group border border-transparent hover:border-white/10 flex flex-col h-full"
+                        >
                           <div className="flex justify-between items-start mb-4">
                             <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center overflow-hidden">
                               <div className="w-6 h-6 bg-white/20 rounded-full" />
@@ -1696,7 +1782,7 @@ export default function App() {
                 </h2>
                 {isLoading ? (
                   <div className="bg-surface-high h-48 rounded-3xl animate-pulse" />
-                ) : featuredCap ? (
+                ) : capOfDay ? (
                   <motion.div
                     animate={{ boxShadow: ['0 0 0 rgba(226,36,31,0)', '0 0 20px rgba(226,36,31,0.3)', '0 0 0 rgba(226,36,31,0)'] }}
                     transition={{ duration: 2, repeat: Infinity }}
@@ -1715,16 +1801,16 @@ export default function App() {
                     </div>
                     <div className="relative z-10 group/claim cursor-help">
                       <p className="font-headline text-2xl md:text-4xl font-bold text-white mb-2 leading-tight mt-4">
-                        "{featuredCap.claim_text}"
+                        "{capOfDay.claim_text}"
                       </p>
                       {/* Tooltip on hover over claim text */}
                       <div className="absolute top-full left-0 mt-2 w-full max-w-md p-5 bg-surface border border-white/10 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.6)] opacity-0 group-hover/claim:opacity-100 transition-all duration-200 pointer-events-none z-50">
                         <div className="flex items-center gap-2 mb-3">
-                          <span className="bg-primary/20 text-primary px-3 py-1 rounded-full font-label text-[10px] uppercase tracking-widest">{featuredCap.category}</span>
+                          <span className="bg-primary/20 text-primary px-3 py-1 rounded-full font-label text-[10px] uppercase tracking-widest">{capOfDay.category}</span>
                         </div>
                         <h4 className="font-label text-xs uppercase tracking-widest text-primary mb-2">Why it's Cap</h4>
                         <p className="text-white/90 font-body text-sm leading-relaxed normal-case font-normal">
-                          {featuredCap.reason_summary}
+                          {capOfDay.reason_summary}
                         </p>
                         <div className="absolute -top-2 left-8 w-4 h-4 bg-surface border-t border-l border-white/10 rotate-45"></div>
                       </div>
@@ -1737,21 +1823,21 @@ export default function App() {
                     </div>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-white/10 pt-6 gap-4 relative z-10">
                       <div className="flex items-center gap-4 text-outline text-sm font-label uppercase tracking-wider">
-                        <span className="flex items-center gap-2"><Flame size={16} className="text-primary" /> {formatNumber(featuredCap.claim_metrics.laugh_count)} Laughed</span>
+                        <span className="flex items-center gap-2"><Flame size={16} className="text-primary" /> {formatNumber(capOfDay.claim_metrics.laugh_count)} Laughed</span>
                         <span>•</span>
-                        <span>{formatNumber(featuredCap.claim_metrics.share_count)} Shares</span>
+                        <span>{formatNumber(capOfDay.claim_metrics.share_count)} Shares</span>
                       </div>
                       <div className="flex gap-2">
                         <LaughButton
-                          celebrationKey={laughCelebrations.featured ?? 0}
-                          onClick={(e) => handleLaugh(e, 'featured')}
+                          celebrationKey={laughCelebrations['cap-of-day'] ?? 0}
+                          onClick={(e) => handleLaugh(e, 'cap-of-day')}
                           className="bg-surface border border-white/10 px-6 py-3 text-sm font-headline font-black uppercase tracking-widest text-white transition-colors hover:bg-white/5"
                           iconClassName="text-primary"
                           label="Laugh"
                           title="Laugh at this claim"
                         />
                         <button
-                          onClick={() => openClaimShareCard('featured')}
+                          onClick={() => openClaimShareCard('cap-of-day')}
                           className="flex items-center justify-center gap-2 bg-white text-black px-6 py-3 rounded-full font-headline font-black uppercase tracking-widest text-sm hover:opacity-90 transition-opacity active:scale-95"
                           title="Share this claim"
                         >
@@ -1762,7 +1848,7 @@ export default function App() {
                   </motion.div>
                 ) : (
                   <div className="bg-surface border border-dashed border-white/10 p-12 text-center rounded-3xl text-outline">
-                    No featured cap today. Check back soon.
+                    No Cap of the Day yet. Check back soon.
                   </div>
                 )}
               </div>
@@ -1771,8 +1857,8 @@ export default function App() {
               <div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                   <h2 className="font-headline text-2xl font-black uppercase tracking-tighter flex items-center gap-3 text-white m-0">
-                    <Camera className="text-white" />
-                    Caught in 4K
+                    <LeaderboardSectionIcon className="text-white" />
+                    {leaderboardSectionTitle}
                   </h2>
 
                   {/* Sorting and Filtering Controls */}
@@ -1854,11 +1940,11 @@ export default function App() {
                             exit={{ opacity: 0, y: 10 }}
                             className="absolute top-full left-0 mt-2 w-56 bg-surface-high border border-white/10 rounded-xl shadow-xl overflow-hidden z-50"
                           >
-                            {['Shares', 'Laughed At', 'Date Added'].map((sortOption) => (
+                            {['Top Caps', 'Caught in 4K', 'Date Added'].map((sortOption) => (
                               <div
                                 key={sortOption}
                                 onClick={() => {
-                                  setTopCapsSortBy(sortOption as any);
+                                  setTopCapsSortBy(sortOption as TopCapsSortBy);
                                   setIsSortDropdownOpen(false);
                                 }}
                                 className={cn(
@@ -1878,7 +1964,7 @@ export default function App() {
                         )}
                       </AnimatePresence>
                     </div>
-                    {(topCapsFilterCategory !== 'All' || topCapsSortBy !== 'Shares') && (
+                    {(topCapsFilterCategory !== 'All' || topCapsSortBy !== 'Top Caps') && (
                       <button
                         onClick={resetFilters}
                         className="flex items-center gap-2 bg-surface-high border border-white/10 text-white rounded-full px-4 py-2 font-label text-xs uppercase tracking-widest hover:bg-white/5 transition-colors"
@@ -1890,12 +1976,12 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-col gap-4">
-                  {filteredAndSortedTopCaps.length > 0 ? (
-                    filteredAndSortedTopCaps.map((item, index) => (
+                  {visibleLeaderboardCaps.length > 0 ? (
+                    visibleLeaderboardCaps.map((item, index) => (
                       <div
                         key={item.id}
                         onClick={() => {
-                          handleViewClaim(item.id);
+                          void handleViewClaim(item.id, 'top_board');
                           toggleExpand(item.id);
                         }}
                         className="bg-surface border border-white/5 rounded-2xl p-6 flex flex-col hover:border-white/20 transition-colors group cursor-pointer relative overflow-hidden"
@@ -1962,7 +2048,10 @@ export default function App() {
                                           href={source.url}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          onClick={(e) => e.stopPropagation()}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleSourceClick(item.id, source.url, 'leaderboard_sources');
+                                          }}
                                           className="bg-surface-high border border-white/5 rounded-xl p-4 hover:border-white/20 transition-colors flex flex-col gap-2 group/source"
                                         >
                                           <div className="flex items-center justify-between">
@@ -2011,7 +2100,9 @@ export default function App() {
                   {historyEntries.map((entry) => (
                     <button
                       key={entry.id}
-                      onClick={() => openHistoryEntryResult(entry)}
+                      onClick={() => {
+                        void openHistoryEntryResult(entry);
+                      }}
                       className="w-full text-left bg-surface border border-white/5 rounded-3xl p-6 hover:border-white/20 transition-colors"
                     >
                       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
@@ -2195,8 +2286,8 @@ export default function App() {
                   [1, 2, 3, 4, 5, 6].map((index) => (
                     <div key={index} className="bg-surface h-64 rounded-3xl animate-pulse border border-white/5" />
                   ))
-                ) : topCapsData.length > 0 ? (
-                  topCapsData.map((item) => (
+                ) : trendingCaps.length > 0 ? (
+                  trendingCaps.map((item) => (
                     <TrendCard
                       key={item.id}
                       type={item.verdict}
@@ -2204,9 +2295,8 @@ export default function App() {
                       time={formatRelativeTime(item.created_at)}
                       claim={item.claim_text}
                       stats={`${formatNumber(item.claim_metrics.share_count)} shares • ${formatNumber(item.claim_metrics.laugh_count)} laughs`}
-                      onClick={async () => {
-                        await handleViewClaim(item.id);
-                        openStoredClaimResult(item);
+                      onClick={() => {
+                        void openStoredClaimResult(item, 'trends');
                       }}
                       onBadgeClick={(e) => {
                         e.stopPropagation();
