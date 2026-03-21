@@ -49,6 +49,53 @@ AS $$
     FROM bounded;
 $$;
 
+CREATE OR REPLACE FUNCTION public.derive_status_tier(
+    p_mode TEXT,
+    p_board_rank BIGINT,
+    p_top_rank BIGINT,
+    p_top_percentile DOUBLE PRECISION,
+    p_age_hours NUMERIC
+)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT CASE
+        WHEN p_mode = 'caught_in_4k' THEN 'Caught in 4K'
+        WHEN p_top_percentile >= 0.99 THEN 'God Tier'
+        WHEN p_top_rank <= 10 THEN 'Top 10'
+        WHEN p_top_percentile >= 0.90 THEN 'Elite'
+        WHEN p_top_percentile >= 0.75 THEN 'Highly Trending'
+        WHEN p_age_hours < 12 THEN 'Fresh Cap'
+        ELSE 'Under Investigation'
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.derive_momentum_label(
+    p_trend_rank BIGINT,
+    p_trend_percentile DOUBLE PRECISION,
+    p_age_hours NUMERIC,
+    p_source_clicks_3h INTEGER,
+    p_share_rate_per_view NUMERIC,
+    p_laughs_3h INTEGER,
+    p_shares_3h INTEGER,
+    p_acceleration NUMERIC
+)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT CASE
+        WHEN p_trend_rank <= 3 AND p_acceleration > 2.0 THEN '🚀 EXPLODING'
+        WHEN p_trend_percentile >= 0.95 THEN '🔥 OVERHEATING'
+        WHEN p_laughs_3h > 50 AND p_shares_3h > 20 THEN '📈 GOING VIRAL'
+        WHEN p_acceleration > 1.5 THEN '⚡ GAINING PACE'
+        WHEN p_trend_percentile >= 0.80 THEN '✨ TRENDING'
+        WHEN p_age_hours < 3 THEN '🆕 FRESH'
+        ELSE '🌑 STABLE'
+    END;
+$$;
+
 DROP FUNCTION IF EXISTS public.get_trending_caps(INTEGER);
 CREATE FUNCTION public.get_trending_caps(p_limit INTEGER DEFAULT 20)
 RETURNS TABLE (
@@ -109,7 +156,7 @@ BEGIN
         ranked.laugh_count,
         ranked.share_count,
         ranked.view_count,
-        public.derive_status_tier('top_caps', ranked.trend_rank, ranked.top_rank, ranked.top_percentile, ranked.age_hours) AS status_tier,
+        public.derive_status_tier('top_caps'::TEXT, ranked.trend_rank, ranked.top_rank, ranked.top_percentile, ranked.age_hours) AS status_tier,
         public.derive_momentum_label(
             ranked.trend_rank,
             ranked.trend_percentile,
@@ -203,7 +250,7 @@ BEGIN
         ranked.share_count,
         ranked.view_count,
         public.derive_status_tier(
-            CASE WHEN resolved_mode = 'caught_in_4k' THEN 'caught_in_4k' ELSE 'top_caps' END,
+            (CASE WHEN resolved_mode = 'caught_in_4k' THEN 'caught_in_4k' ELSE 'top_caps' END)::TEXT,
             CASE
                 WHEN resolved_mode = 'caught_in_4k' THEN ranked.funny_rank
                 WHEN resolved_mode = 'date_added' THEN ranked.recent_rank
@@ -340,7 +387,7 @@ BEGIN
         scored.laugh_count,
         scored.share_count,
         scored.view_count,
-        'Cap of the Day' AS status_tier,
+        'Cap of the Day'::TEXT AS status_tier,
         public.derive_momentum_label(
             scored.trend_rank,
             scored.trend_percentile,
@@ -351,7 +398,7 @@ BEGIN
             scored.unique_shares_3h,
             scored.acceleration
         ) AS momentum_label,
-        1 AS board_rank,
+        1::BIGINT AS board_rank,
         scored.top_cap_score,
         scored.trending_score,
         scored.caught_in_4k_score
