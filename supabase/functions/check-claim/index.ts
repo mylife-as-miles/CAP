@@ -370,16 +370,43 @@ function synthesizeVerdict(input: ParsedInput, results: FirecrawlResult[], norma
     reasons.push('The available evidence is too thin or too mixed to make a cleaner call.');
   }
 
-  if (reasons.length === 0) {
-    reasons.push('Cap could not build a stronger explanation from the live evidence returned.');
-  }
+  const variety = {
+    CAP: [
+      'That is cap.',
+      'Absolute cap.',
+      'Total fiction.',
+      'Busted.',
+      'That is a myth.',
+      'Categorically false.',
+      'Pure cap.',
+    ],
+    NO_CAP: [
+      'No cap detected.',
+      'That is no cap.',
+      'Solid truth.',
+      'Fact-check passed.',
+      'Verified.',
+      'Confirmed.',
+      'Legit.',
+    ],
+    HALF_CAP: [
+      'Half cap.',
+      'Partial truth.',
+      'Missing context.',
+      'Mixed signals.',
+      'Nuanced reality.',
+    ],
+    UNVERIFIED: [
+      'Evidence inconclusive.',
+      'Signal too weak.',
+      'Jury is still out.',
+      'Unverified.',
+      'Sources are ghosting.',
+    ],
+  };
 
-  const spokenPrefix = {
-    CAP: 'Cap',
-    NO_CAP: 'No cap',
-    HALF_CAP: 'Half cap',
-    UNVERIFIED: 'Unverified',
-  }[verdict];
+  const prefixes = variety[verdict];
+  const spokenPrefix = prefixes[Math.floor(Math.random() * prefixes.length)];
 
   return {
     confidence,
@@ -387,7 +414,7 @@ function synthesizeVerdict(input: ParsedInput, results: FirecrawlResult[], norma
     rawSearchSummary: `Sources reviewed: ${signals.length}. Credible: ${credibleCount}. Support: ${supportCount}. Contradictions: ${contradictionCount}.`,
     reasons: reasons.slice(0, 3),
     sources: topSources,
-    spokenSummary: `${spokenPrefix}: ${reasons[0]}`,
+    spokenSummary: `${spokenPrefix} ${reasons[0]}`,
     verdict,
   };
 }

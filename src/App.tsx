@@ -1304,14 +1304,12 @@ export default function App() {
                 ))}
               </div>
 
-              <div className="min-h-[100px] flex items-center justify-center">
-                <p className="font-headline text-3xl md:text-5xl font-black text-white leading-tight tracking-tight italic">
+              <div className="min-h-[100px] flex items-center justify-center text-center">
+                <p className="font-headline text-3xl md:text-5xl font-black text-white leading-tight tracking-tight italic max-w-4xl px-4">
                   {voiceMessages && voiceMessages.length > 0 ? (
                     <>"{voiceMessages[voiceMessages.length - 1].text}"</>
                   ) : (
-                    <>
-                      "Yo Cap, <span className="text-outline">is this true? I saw a post that said...</span>"
-                    </>
+                    <span className="text-outline opacity-50">Speak now to verify...</span>
                   )}
                 </p>
               </div>
