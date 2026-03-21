@@ -163,18 +163,7 @@ export default function App() {
       setIsLoading(true);
       setDataError(null);
 
-      // Fetch Featured Claim
-      const { data: featuredData, error: featuredError } = await supabase
-        .from('claims')
-        .select('*, claim_metrics(*)')
-        .eq('is_featured', true)
-        .eq('status', 'published')
-        .order('created_at', { ascending: false }).limit(1).maybeSingle();
-
-      if (featuredError) throw featuredError;
-      setFeaturedCap((featuredData as any) ?? null);
-
-      // Fetch Top Caps
+      // Fetch Top Caps (Both for list and hero selection)
       const { data: topData, error: topError } = await supabase
         .from('claims')
         .select('*, claim_metrics(*)')
@@ -192,6 +181,18 @@ export default function App() {
           return acc;
         }
       }, []);
+
+      if (uniqueClaims.length > 0) {
+        // Sort by total engagement to find the absolute community winner
+        const sortedByEngagement = [...uniqueClaims].sort((a, b) => {
+          const scoreA = (a.claim_metrics?.share_count ?? 0) + (a.claim_metrics?.laugh_count ?? 0);
+          const scoreB = (b.claim_metrics?.share_count ?? 0) + (b.claim_metrics?.laugh_count ?? 0);
+          return scoreB - scoreA;
+        });
+        setFeaturedCap(sortedByEngagement[0]);
+      } else {
+        setFeaturedCap(null);
+      }
 
       setTopCapsData(uniqueClaims);
 
