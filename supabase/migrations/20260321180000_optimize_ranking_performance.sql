@@ -118,13 +118,13 @@ analytics_rollup AS (
         COUNT(DISTINCT ae.visitor_id) FILTER (WHERE ae.event_name = 'detail_opened' AND ae.created_at >= NOW() - INTERVAL '7 days')::INT AS detail_opens_7d,
         COUNT(DISTINCT ae.visitor_id) FILTER (WHERE ae.event_name = 'source_clicked' AND ae.created_at >= NOW() - INTERVAL '7 days')::INT AS source_clicks_7d,
         COUNT(DISTINCT ae.visitor_id) FILTER (WHERE ae.event_name = 'verdict_replayed' AND ae.created_at >= NOW() - INTERVAL '7 days')::INT AS verdict_replays_7d,
-        COUNT(DISTINCT ae.visitor_id) FILTER (WHERE ae.event_name = 'source_clicked' AND ae.created_at >= NOW() - INTERVAL '3 hours')::INT AS unique_source_clks_3h,
-        COUNT(DISTINCT ae.visitor_id) FILTER (WHERE ae.event_name = 'source_clicked' AND ae.created_at >= NOW() - INTERVAL '12 hours')::INT AS unique_source_clks_12h,
+        COUNT(DISTINCT ae.visitor_id) FILTER (WHERE ae.event_name = 'source_clicked' AND ae.created_at >= NOW() - INTERVAL '3 hours')::INT AS unique_source_clicks_3h,
+        COUNT(DISTINCT ae.visitor_id) FILTER (WHERE ae.event_name = 'source_clicked' AND ae.created_at >= NOW() - INTERVAL '12 hours')::INT AS unique_source_clicks_12h,
         COUNT(DISTINCT ae.visitor_id) FILTER (
             WHERE ae.event_name = 'source_clicked'
               AND ae.created_at >= NOW() - INTERVAL '12 hours'
               AND ae.created_at < NOW() - INTERVAL '3 hours'
-        )::INT AS unique_source_clks_prev_9h,
+        )::INT AS unique_source_clicks_prev_9h,
         COALESCE(AVG(
             NULLIF(COALESCE(ae.metadata->>'qualityScore', ae.metadata->>'quality_score'), '')::NUMERIC
         ) FILTER (WHERE ae.event_name = 'dwell_quality_reported' AND ae.created_at >= NOW() - INTERVAL '7 days'), 0) AS avg_dwell_quality_7d
@@ -170,8 +170,8 @@ SELECT
     COALESCE(ir.unique_shares_3h, 0) AS unique_shares_3h,
     COALESCE(ir.unique_laughs_3h, 0) AS unique_laughs_3h,
     COALESCE(ir.unique_views_3h, 0) AS unique_views_3h,
-    COALESCE(ar.unique_source_clks_3h, 0) AS unique_source_clicks_3h,
-    COALESCE(ar.unique_source_clks_12h, 0) AS unique_source_clicks_12h,
+    COALESCE(ar.unique_source_clicks_3h, 0) AS unique_source_clicks_3h,
+    COALESCE(ar.unique_source_clicks_12h, 0) AS unique_source_clicks_12h,
     
     EXTRACT(EPOCH FROM (NOW() - pc.created_at)) / 3600.0 AS age_hours,
     COALESCE(rr.unique_engaged_visitors_7d, 0) AS unique_engaged_visitors_7d,
