@@ -2,11 +2,34 @@ import random
 import uuid
 import json
 
+real_caps = [
+    {"title": "AI-Generated Food Delivery Fraud", "text": "AI-generated internal memos claim food delivery companies are stealing 100% of driver tips.", "verdict": "CAP", "source": "Reddit", "url": "https://reddit.com/r/technology"},
+    {"title": "GTA 6 Bridge Leak", "text": "A leaked video shows a bridge in GTA 6 that turns out to be a 40-second elaborate hoax.", "verdict": "CAP", "source": "Twitter", "url": "https://twitter.com/rockstargames"},
+    {"title": "Pizzagate Pedophilia Ring", "text": "False claims of a pedophilia ring operating out of a D.C. pizzeria.", "verdict": "CAP", "source": "Reddit", "url": "https://wikipedia.org/wiki/Pizzagate_conspiracy_theory"},
+    {"title": "Frida Sofia Mexico Earthquake", "text": "A 12-year-old girl named Frida Sofia is trapped under ruins after the 2017 Mexico earthquake.", "verdict": "CAP", "source": "News", "url": "https://reddit.com/r/worldnews"},
+    {"title": "Trump Swifties Endorsement", "text": "Taylor Swift endorses Donald Trump for the 2024 presidential campaign via AI images.", "verdict": "CAP", "source": "Twitter", "url": "https://thefulcrum.us"},
+    {"title": "Zelenskyy Surrender Deepfake", "text": "A video of Ukrainian President Zelenskyy asking his troops to surrender.", "verdict": "CAP", "source": "Twitter", "url": "https://smallwarsjournal.com"},
+    {"title": "Pope Francis Madonna Kiss", "text": "Viral image showing Pope Francis kissing the musician Madonna.", "verdict": "CAP", "source": "Twitter", "url": "https://wikipedia.org"},
+    {"title": "Elon Musk Penis Tweet", "text": "A fabricated tweet about Elon Musk's 'botched surgery'.", "verdict": "CAP", "source": "Twitter", "url": "https://gizmodo.com"},
+    {"title": "Andrew Tate Dating Rule 2025", "text": "A fake tweet from Andrew Tate saying having a girlfriend in 2025 is 'gay'.", "verdict": "CAP", "source": "Twitter", "url": "https://twitter.com"},
+    {"title": "Joe Rogan Trump Protest Tweet", "text": "Joe Rogan shares a fake tweet from Donald Trump about 'No Kings' protests.", "verdict": "CAP", "source": "Twitter", "url": "https://gizmodo.com"},
+    {"title": "Synthetic Virus Pandemic 2025", "text": "Viral claims about a new pandemic caused by synthetic viruses reach 9 million shares.", "verdict": "CAP", "source": "Meta", "url": "https://sqmagazine.co.uk"},
+    {"title": "AI Music Royalty Scammer", "text": "A musician used AI songs and bots to generate $10 million in royalties.", "verdict": "NO CAP", "source": "News", "url": "https://wikipedia.org"},
+    {"title": "Discord Support ID Breach", "text": "Unauthorized access to Discord support exposed 70,000 user IDs.", "verdict": "NO CAP", "source": "Discord", "url": "https://discord.com"},
+    {"title": "Tamagotchi 10-Year Life", "text": "Claims of keeping a Tamagotchi alive for over 10 years without resetting.", "verdict": "CAP", "source": "Reddit", "url": "https://reddit.com/r/tamagotchi"},
+    {"title": "Cake Decorating 'First Try'", "text": "A professional-level wedding cake described as a 'first attempt' by a hobbyist.", "verdict": "HALF CAP", "source": "Reddit", "url": "https://reddit.com/r/baking"},
+    {"title": "TIFU: Bully Power Fantasy", "text": "A Reddit user claimed to have taken down a bodybuilder bully with a single punch in front of the whole school.", "verdict": "CAP", "source": "Reddit", "url": "https://reddit.com/r/tifu"},
+    {"title": "Bitcoin will hit $1M by end of 2024", "text": "Several analysts claimed Bitcoin would reach $1 million by December 2024.", "verdict": "CAP", "source": "Twitter", "url": "https://crypto.com"},
+    {"title": "Discord will be shut down in 2026", "text": "Rumors that Discord is being acquired and shut down due to server costs.", "verdict": "CAP", "source": "Discord", "url": "https://discord.com"},
+    {"title": "MrBeast Secret Giveaway", "text": "A secret link in a MrBeast video that gives $10k to the first 100 people.", "verdict": "CAP", "source": "YouTube", "url": "https://youtube.com"},
+    {"title": "Hidden iPhone 16 Secret Button", "text": "Leaked Apple internal documents reveal a physical 'AI button' on the iPhone 16.", "verdict": "HALF CAP", "source": "Twitter", "url": "https://apple.com"}
+]
+
 categories = ['Tech', 'Gaming', 'Crypto', 'Internet Drama', 'Science', 'Pop Culture']
 verdicts = ['CAP', 'NO CAP', 'HALF CAP']
 
-subjects = ['Elon Musk', 'Sam Altman', 'A new AI model', 'Bitcoin', 'Ethereum', 'A popular streamer', 'MrBeast', 'A hidden Discord server', 'A leaked iPhone design', 'A secret government project', 'A popular YouTuber', 'A generic Reddit mod', 'A new VR headset']
-actions = ['just bought Twitter again', 'is actually a robot', 'predicted the exact date of the crash', 'was caught faking their speedrun', 'is secretly funding a competitor', 'was banned for using aimbot', 'just released a manifesto', 'has been faking their videos', 'is actually two people', 'got hacked by a 12 year old', 'is shutting down tomorrow', 'just fired their whole team', 'is releasing a crypto token']
+subjects = ['Elon Musk', 'Sam Altman', 'Vitalik Buterin', 'Jensen Huang', 'A Rogue AI', 'The Reddit CEO', 'A Discord Moderator', 'A TikTok Influencer', 'A leaked CIA document', 'A NASA scientist']
+actions = ['discovered a new planet', 'is building a private army', 'deleted the entire production database', 'was caught using a voice changer', 'is actually a group of three people', 'found a way to hack any bank account', 'just bought an entire island for users', 'is releasing a brain-computer interface', 'leaked the script for the next world event', 'found evidence of aliens in a Discord chat']
 
 sources_templates = [
     {"name": "Reddit", "url": "https://reddit.com/r/{}", "text": "A viral post with 50k upvotes claimed this."},
@@ -16,22 +39,33 @@ sources_templates = [
 ]
 
 def generate_claim(index):
-    subject = random.choice(subjects)
-    action = random.choice(actions)
-    title = f"{subject} {action}"
+    if index < len(real_caps):
+        rc = real_caps[index]
+        title = rc["title"]
+        claim_text = rc["text"]
+        verdict = rc["verdict"]
+        category = random.choice(categories)
+        source_name = rc["source"]
+        source_url = rc["url"]
+    else:
+        subject = random.choice(subjects)
+        action = random.choice(actions)
+        title = f"{subject} {action}"
+        claim_text = f"Rumor circulating that {subject} {action}. People are going crazy over it."
+        category = random.choice(categories)
+        verdict = random.choice(verdicts)
+        source_tmpl = random.choice(sources_templates)
+        source_name = source_tmpl["name"]
+        source_url = source_tmpl["url"]
+        if "Reddit" in source_name:
+            source_url = source_url.format(category.lower().replace(' ', ''))
+
     slug = f"claim-{uuid.uuid4().hex[:8]}"
-    claim_text = f"Rumor circulating that {subject} {action}. People are going crazy over it."
-    category = random.choice(categories)
-    verdict = random.choice(verdicts)
     confidence = random.randint(40, 100)
     reason_summary = f"Upon investigation, it seems this is mostly {verdict.lower()}."
     details = f"We checked multiple sources. Some said it's true, some said it's fake. The consensus is {verdict}."
     
-    source_tmpl = random.choice(sources_templates)
-    if "Reddit" in source_tmpl["name"]:
-        source_tmpl["url"] = source_tmpl["url"].format(category.lower().replace(' ', ''))
-    
-    sources = json.dumps([source_tmpl]).replace("'", "''")
+    sources = json.dumps([{"name": source_name, "url": source_url, "text": "Verified source link."}]).replace("'", "''")
     is_featured = random.random() < 0.05
     
     title_escaped = title.replace("'", "''")

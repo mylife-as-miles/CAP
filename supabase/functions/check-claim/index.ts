@@ -53,6 +53,18 @@ const CREDIBLE_DOMAINS = [
   'npr.org',
   'reuters.com',
   'who.int',
+  'nytimes.com',
+  'theguardian.com',
+  'wsj.com',
+  'washingtonpost.com',
+  'wikipedia.org',
+  'espn.com',
+  'bleacherreport.com',
+  'fifa.com',
+  'theathletic.com',
+  'theverge.com',
+  'wired.com',
+  'techcrunch.com',
 ];
 
 const CONTRADICTION_TERMS = [
@@ -333,7 +345,7 @@ function synthesizeVerdict(input: ParsedInput, results: FirecrawlResult[], norma
   let confidence = 30;
   const reasons: string[] = [];
 
-  if (signals.length === 0 || credibleCount === 0) {
+  if (signals.length === 0 || (credibleCount === 0 && signals.length < 5)) {
     verdict = 'UNVERIFIED';
     confidence = 24;
     reasons.push('Cap did not find enough reliable sources to verify the claim confidently.');

@@ -26,6 +26,7 @@
   "include": [
     "src",
     "shared",
+    "scripts",
     "vite.config.ts"
   ]
 }

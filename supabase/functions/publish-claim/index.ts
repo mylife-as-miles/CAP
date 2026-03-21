@@ -66,6 +66,7 @@ function parseInput(body: unknown): ParsedPublishInput | CheckClaimError {
   const checkedAt = normalizeString(payload.checkedAt);
   const question = normalizeString(payload.question);
   const claimText = normalizeString(payload.claimText);
+  const category = normalizeString(payload.category);
   const url = normalizeString(payload.url);
   const mode = normalizeString(payload.mode) === 'voice' ? 'voice' : 'manual';
   const result = payload.result;
@@ -111,6 +112,7 @@ function parseInput(body: unknown): ParsedPublishInput | CheckClaimError {
 
   return {
     checkedAt,
+    category: category || undefined,
     claimText,
     mode,
     question,
@@ -251,7 +253,7 @@ Deno.serve(async (request) => {
   let created = false;
 
   const claimRecord = {
-    category: parsed.mode === 'voice' ? 'Voice Check' : 'Manual Check',
+    category: parsed.category || (parsed.mode === 'voice' ? 'Voice Check' : 'Manual Check'),
     claim_text: parsed.result.claimText,
     confidence: parsed.result.confidence,
     details: buildDetails(parsed),

@@ -59,6 +59,7 @@ export interface PublishClaimInput {
   mode: CapCheckMode;
   question: string;
   claimText: string;
+  category?: string;
   url?: string;
   result: PublishClaimSnapshot;
 }
