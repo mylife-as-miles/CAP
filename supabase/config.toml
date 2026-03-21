@@ -4,3 +4,6 @@ verify_jwt = false
 [functions.elevenlabs-signed-url]
 verify_jwt = false
 
+[functions.publish-claim]
+verify_jwt = false
+
