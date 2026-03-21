@@ -568,13 +568,14 @@ export default function App() {
     if (voiceHangupState === 'waiting_for_speech' && isSpeaking) {
       setVoiceHangupState('waiting_for_silence');
     } else if (voiceHangupState === 'waiting_for_silence' && !isSpeaking && voiceStatus === 'connected') {
-      // Small buffer to ensure final word playback finishes
+      // Shorter buffer (800ms) to ensure final word playback finishes before server timeout
       const timer = setTimeout(() => {
-        if (!isSpeaking) {
-          endVoiceSession();
+        // Double check we are still not speaking
+        if (!isSpeaking && voiceHangupState === 'waiting_for_silence') {
+          void endVoiceSession();
           setVoiceHangupState('idle');
         }
-      }, 1500);
+      }, 800);
       return () => clearTimeout(timer);
     }
   }, [voiceHangupState, isSpeaking, voiceStatus, endVoiceSession]);
@@ -1035,10 +1036,10 @@ export default function App() {
       await persistHistoryEntries([updatedEntry]);
       setActiveResult((current) => current && current.historyEntryId === updatedEntry.id
         ? {
-            ...current,
-            publishedClaimId: response.claimId,
-            view: updatedEntry.result,
-          }
+          ...current,
+          publishedClaimId: response.claimId,
+          view: updatedEntry.result,
+        }
         : current);
 
       void fetchClaims();
