@@ -265,29 +265,18 @@ Deno.serve(async (request) => {
     verdict: parsed.result.verdict,
   };
 
-  if (!claimId) {
-    const { data: inserted, error: insertError } = await client
-      .from('claims')
-      .insert(claimRecord)
-      .select('id')
-      .single();
+  const { data: upserted, error: upsertError } = await client
+    .from('claims')
+    .upsert(claimRecord, { onConflict: 'slug' })
+    .select('id, status')
+    .single();
 
-    if (insertError || !inserted?.id) {
-      return errorResponse('Cap could not publish this claim to Top Caps.', origin, 500, true);
-    }
-
-    claimId = inserted.id;
-    created = true;
-  } else if (existing.status !== 'published') {
-    const { error: updateError } = await client
-      .from('claims')
-      .update(claimRecord)
-      .eq('id', claimId);
-
-    if (updateError) {
-      return errorResponse('Cap could not promote this claim to Top Caps.', origin, 500, true);
-    }
+  if (upsertError || !upserted?.id) {
+    return errorResponse('Cap could not publish or update this claim.', origin, 500, true);
   }
+
+  claimId = upserted.id;
+  created = !existing; // Fallback for 'created' flag logic
 
   const metrics = await readMetrics(client, claimId);
 

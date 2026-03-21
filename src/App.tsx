@@ -182,7 +182,18 @@ export default function App() {
         .order('created_at', { ascending: false });
 
       if (topError) throw topError;
-      setTopCapsData((topData || []) as any);
+
+      // Client-side deduplication as a safety fallback
+      const uniqueClaims = (topData || []).reduce((acc: any[], current: any) => {
+        const x = acc.find(item => item.slug === current.slug);
+        if (!x) {
+          return acc.concat([current]);
+        } else {
+          return acc;
+        }
+      }, []);
+
+      setTopCapsData(uniqueClaims);
 
     } catch (err: any) {
       console.error('Supabase fetch error:', err);
