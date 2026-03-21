@@ -125,9 +125,9 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.derive_status_tier(
     p_mode TEXT,
-    p_board_rank INTEGER,
-    p_top_rank INTEGER,
-    p_top_percentile NUMERIC,
+    p_board_rank BIGINT,
+    p_top_rank BIGINT,
+    p_top_percentile DOUBLE PRECISION,
     p_age_hours NUMERIC
 )
 RETURNS TEXT
@@ -144,8 +144,8 @@ AS $$
 $$;
 
 CREATE OR REPLACE FUNCTION public.derive_momentum_label(
-    p_trend_rank INTEGER,
-    p_trend_percentile NUMERIC,
+    p_trend_rank BIGINT,
+    p_trend_percentile DOUBLE PRECISION,
     p_age_hours NUMERIC,
     p_source_clicks_3h INTEGER,
     p_share_rate_per_view NUMERIC,
@@ -627,7 +627,7 @@ RETURNS TABLE (
     view_count INTEGER,
     status_tier TEXT,
     momentum_label TEXT,
-    board_rank INTEGER,
+    board_rank BIGINT,
     top_cap_score NUMERIC,
     trending_score NUMERIC,
     caught_in_4k_score NUMERIC
@@ -711,7 +711,7 @@ RETURNS TABLE (
     view_count INTEGER,
     status_tier TEXT,
     momentum_label TEXT,
-    board_rank INTEGER,
+    board_rank BIGINT,
     top_cap_score NUMERIC,
     trending_score NUMERIC,
     caught_in_4k_score NUMERIC
@@ -818,7 +818,7 @@ RETURNS TABLE (
     view_count INTEGER,
     status_tier TEXT,
     momentum_label TEXT,
-    board_rank INTEGER,
+    board_rank BIGINT,
     top_cap_score NUMERIC,
     trending_score NUMERIC,
     caught_in_4k_score NUMERIC
