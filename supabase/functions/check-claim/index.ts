@@ -157,11 +157,14 @@ function parseInput(body: unknown): ParsedInput | CheckClaimError {
     };
   }
 
-  if (!claimText && !url) {
+  // Advanced fallback: If claimText is missing but question is present, use question.
+  const finalClaimText = claimText || (url ? '' : finalQuestion);
+
+  if (!finalClaimText && !url) {
     return {
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'Provide claimText or url so Cap has something concrete to verify.',
+        message: 'Provide a claim, question, or url so Cap has something to verify.',
         retryable: false,
       },
     };
@@ -183,7 +186,7 @@ function parseInput(body: unknown): ParsedInput | CheckClaimError {
 
   return {
     question: finalQuestion,
-    claimText,
+    claimText: finalClaimText,
     url,
     mode,
     visitorId,
