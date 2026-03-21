@@ -134,6 +134,17 @@ export default function App() {
   const [activeResult, setActiveResult] = useState<ActiveResultState | null>(null);
   const [activeCheckLabel, setActiveCheckLabel] = useState('');
   const [isCheckingLive, setIsCheckingLive] = useState(false);
+
+  // Helper to extract keywords for dynamic "Checking" UI context
+  const getCheckingKeywords = (label: string) => {
+    return label
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((word) => word.length > 3 && !['this', 'that', 'with', 'from', 'what', 'true', 'claim'].includes(word))
+      .slice(0, 4);
+  };
+
+  const checkingKeywords = getCheckingKeywords(activeCheckLabel || inputValue);
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [alertEntries, setAlertEntries] = useState<AlertEntry[]>([]);
   const [hasDismissedDisclaimer, setHasDismissedDisclaimer] = useState(() => getDisclaimerDismissed());
@@ -1365,7 +1376,11 @@ export default function App() {
                         </div>
                         <div className="flex-1">
                           <p className="font-headline font-bold text-white">Synthesizing claim structure</p>
-                          <p className="font-body text-sm text-outline">Parsed 3 core variables: Timeframe, Metric, Value.</p>
+                          <p className="font-body text-sm text-outline">
+                            {checkingKeywords.length > 0
+                              ? `Parsed ${checkingKeywords.length} core variables: ${checkingKeywords.map(k => k.charAt(0).toUpperCase() + k.slice(1)).join(', ')}.`
+                              : "Isolating claim tokens and linguistic markers..."}
+                          </p>
                         </div>
                       </div>
 
@@ -1375,7 +1390,11 @@ export default function App() {
                         </div>
                         <div className="flex-1">
                           <p className="font-headline font-bold text-white text-xl">Searching web for receipts...</p>
-                          <p className="font-body text-outline">Querying Bloomberg, Reuters, and Federal Reserve archives.</p>
+                          <p className="font-body text-outline">
+                            {checkingKeywords.length > 0
+                              ? `Querying archives for "${checkingKeywords.join(' ')}" and related entities.`
+                              : "Broadcasting search query to primary verification nodes..."}
+                          </p>
                           <div className="mt-4 flex gap-2">
                             <motion.span animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1, repeat: Infinity }} className="w-12 h-1 bg-primary rounded-full"></motion.span>
                             <motion.span animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1, repeat: Infinity, delay: 0.2 }} className="w-12 h-1 bg-primary rounded-full"></motion.span>
@@ -1407,8 +1426,20 @@ export default function App() {
                   </div>
 
                   {[
-                    { site: 'REUTERS.COM', color: 'text-secondary', text: '"Consumer spending remains resilient in Q1 despite inflationary pressures, showing a 1.2% increase..."' },
-                    { site: 'BLOOMBERG', color: 'text-tertiary', text: '"Market analysts predict a softening but highlight that \'40%\' claims are statistically unfounded..."' }
+                    {
+                      site: checkingKeywords[0] ? `${checkingKeywords[0].toUpperCase()}.ORG` : 'REUTERS.COM',
+                      color: 'text-secondary',
+                      text: checkingKeywords.length >= 2
+                        ? `Found technical documentation covering ${checkingKeywords[0]} and ${checkingKeywords[1]} specific interactions...`
+                        : '"Consumer spending remains resilient in Q1 despite inflationary pressures, showing a 1.2% increase..."'
+                    },
+                    {
+                      site: checkingKeywords[1] ? `${checkingKeywords[1].toUpperCase()}_INTEL` : 'BLOOMBERG',
+                      color: 'text-tertiary',
+                      text: checkingKeywords.length >= 2
+                        ? `Analyzing metadata for "${checkingKeywords.join(' ')}" to detect statistical outliers...`
+                        : '"Market analysts predict a softening but highlight that \'40%\' claims are statistically unfounded..."'
+                    }
                   ].map((source, i) => (
                     <div key={i} className={cn("bg-surface-high p-5 rounded-3xl border-l-2", source.color.replace('text-', 'border-'))}>
                       <div className="flex items-center gap-3 mb-3">
