@@ -273,7 +273,7 @@ function extractSnippet(result: FirecrawlResult) {
 function normalizeSources(results: FirecrawlResult[]): CapSource[] {
   return results
     .filter((result) => typeof result.url === 'string' && result.url.length > 0)
-    .slice(0, 3)
+    .slice(0, 15)
     .map((result) => ({
       title: result.title?.trim() || result.metadata?.title?.trim() || hostnameOf(result.url ?? '') || 'Source',
       url: result.url as string,
@@ -421,13 +421,10 @@ function synthesizeVerdict(input: ParsedInput, results: FirecrawlResult[], norma
 
 async function callFirecrawl(input: ParsedInput, normalizedQuery: string) {
   const payload: Record<string, unknown> = {
-    limit: 3,
+    limit: 15,
     query: normalizedQuery,
-    scrapeOptions: {
-      formats: ['markdown'],
-    },
     sources: looksFresh(`${input.question} ${input.claimText ?? ''}`) ? ['web', 'news'] : ['web'],
-    timeout: 15000,
+    timeout: 8000,
   };
 
   if (looksFresh(`${input.question} ${input.claimText ?? ''}`)) {
@@ -602,12 +599,17 @@ Deno.serve(async (request) => {
     result.spokenSummary = 'Unverified: Cap could not find enough reliable evidence to call this.';
   }
 
-  const persistedClaimId = await persistResult(parsed, result);
+  // Instead of waiting, we trigger persistence and logging in the background
+  // to save precious milliseconds for the strict voice agent timeout limits.
   const response: CheckClaimResponse = {
     ...result,
-    persistedClaimId,
+    persistedClaimId: undefined, // Will be generated asynchronously
   };
 
-  await logAnalytics(parsed, response);
+  Promise.all([
+    persistResult(parsed, result).catch((err) => console.error('Persist failed', err)),
+    logAnalytics(parsed, response).catch((err) => console.error('Analytics failed', err))
+  ]);
+
   return jsonResponse(response, 200, origin);
 });
