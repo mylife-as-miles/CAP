@@ -267,14 +267,30 @@ Deno.serve(async (request) => {
     verdict: parsed.result.verdict,
   };
 
-  const { data: upserted, error: upsertError } = await client
-    .from('claims')
-    .upsert(claimRecord, { onConflict: 'slug' })
-    .select('id, status')
-    .single();
+  let upserted;
+  let upsertError;
+
+  try {
+    const response = await client
+      .from('claims')
+      .upsert(claimRecord, { onConflict: 'slug' })
+      .select('id, status')
+      .single();
+    upserted = response.data;
+    upsertError = response.error;
+  } catch (err) {
+    console.error('[publish-claim] Unexpected error during upsert:', err);
+    return errorResponse(`Unexpected internal error: ${err instanceof Error ? err.message : String(err)}`, origin, 500, false);
+  }
 
   if (upsertError || !upserted?.id) {
-    return errorResponse('Cap could not publish or update this claim.', origin, 500, true);
+    console.error('[publish-claim] Upsert failed:', upsertError);
+    return errorResponse(
+      `Cap could not publish or update this claim: ${upsertError?.message || 'Unknown database error'}`,
+      origin,
+      500,
+      true
+    );
   }
 
   claimId = upserted.id;
