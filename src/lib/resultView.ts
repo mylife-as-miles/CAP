@@ -35,6 +35,8 @@ export interface ResultViewModel {
     footer: string;
     shareText: string;
     shareTitle: string;
+    verdict: string;
+    claimText: string;
   };
 }
 
@@ -154,6 +156,8 @@ export function buildResultViewFromCheck(
       footer: 'Checked with Firecrawl • Spoken by Cap on ElevenLabs',
       shareText: `${verdict}\n"${response.spokenSummary}"`,
       shareTitle: 'CAP',
+      verdict: verdict,
+      claimText: response.spokenSummary,
     },
   };
 }
@@ -198,6 +202,8 @@ export function buildResultViewFromClaim(claim: StoredClaimLike): ResultViewMode
       footer: 'Checked with Firecrawl • Spoken by Cap on ElevenLabs',
       shareText: `${claim.verdict}\n"${claim.claim_text}"`,
       shareTitle: 'CAP',
+      verdict: claim.verdict,
+      claimText: claim.claim_text,
     },
   };
 }

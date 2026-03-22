@@ -34,10 +34,35 @@ type Screen = 'home' | 'listening' | 'checking' | 'results' | 'top' | 'history' 
 type ClaimTarget = 'cap-of-day' | string;
 type TopCapsSortBy = 'Top Caps' | 'Caught in 4K' | 'Date Added';
 
+const ROUTE_MAP: Record<string, Screen> = {
+  '/': 'home',
+  '/history': 'history',
+  '/alert': 'notifications',
+  '/top-caps': 'top',
+  '/profile': 'profile',
+  '/trends': 'trends',
+  '/new-caps': 'new',
+};
+
+const PATH_MAP: Record<Screen, string> = {
+  home: '/',
+  listening: '/',
+  checking: '/',
+  results: '/',
+  top: '/top-caps',
+  history: '/history',
+  profile: '/profile',
+  notifications: '/alert',
+  trends: '/trends',
+  new: '/new-caps',
+};
+
 type ShareCardData = {
   footer: string;
   shareText: string;
   shareTitle: string;
+  verdict: string;
+  claimText: string;
 };
 
 type ActiveResultSource = 'local-check' | 'history' | 'published-claim';
@@ -157,6 +182,29 @@ export default function App() {
 
   // Voice Auto-Hangup State machine
   const [voiceHangupState, setVoiceHangupState] = useState<'idle' | 'waiting_for_speech' | 'waiting_for_silence'>('idle');
+
+  // Handle Routing
+  useEffect(() => {
+    const handleLocationChange = () => {
+      const path = window.location.pathname;
+      const targetScreen = ROUTE_MAP[path];
+      if (targetScreen) {
+        setScreen(targetScreen);
+      }
+    };
+
+    window.addEventListener('popstate', handleLocationChange);
+    handleLocationChange(); // Initial load
+
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
+
+  useEffect(() => {
+    const targetPath = PATH_MAP[screen];
+    if (targetPath && window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
+  }, [screen]);
 
   const refreshFeeds = async () => {
     try {
@@ -692,6 +740,8 @@ export default function App() {
     footer: 'Checked with Firecrawl • Spoken by Cap on ElevenLabs',
     shareText: `${claim.verdict}\n"${claim.claim_text}"`,
     shareTitle: 'CAP',
+    verdict: claim.verdict,
+    claimText: claim.claim_text,
   });
 
   const openResultShareCard = async () => {
@@ -2472,25 +2522,23 @@ export default function App() {
                   </div>
                   <h1 className={cn(
                     "font-headline leading-none font-black text-primary uppercase italic tracking-tighter drop-shadow-[0_0_30px_rgba(226,36,31,0.4)] mb-4",
-                    (activeResult?.view.verdict.length ?? 0) > 8
+                    (shareCardData.verdict.length ?? 0) > 8
                       ? "text-[32px] sm:text-[48px]"
-                      : (activeResult?.view.verdict.length ?? 0) > 4
+                      : (shareCardData.verdict.length ?? 0) > 4
                         ? "text-[48px] sm:text-[64px]"
                         : "text-[64px] sm:text-[80px]"
                   )}>
-                    {activeResult?.view.verdict ?? 'CAP'}
+                    {shareCardData.verdict}
                   </h1>
 
-                  {activeResult && (
-                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                      <div className="relative">
-                        <div className="absolute -inset-1 bg-primary/5 blur-xl rounded-full" />
-                        <p className="relative font-body text-base sm:text-lg text-white font-medium leading-tight max-w-[240px] mx-auto italic">
-                          "{activeResult.view.claimText}"
-                        </p>
-                      </div>
+                  <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <div className="relative">
+                      <div className="absolute -inset-1 bg-primary/5 blur-xl rounded-full" />
+                      <p className="relative font-body text-base sm:text-lg text-white font-medium leading-tight max-w-[240px] mx-auto italic">
+                        "{shareCardData.claimText}"
+                      </p>
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 <div className="p-6 text-center relative z-10 border-t border-white/5 bg-black/40">
