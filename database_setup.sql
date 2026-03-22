@@ -57,6 +57,19 @@ CREATE TABLE IF NOT EXISTS public.claims (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Ensure slug is unique, even if table was created before the UNIQUE keyword was added
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'claims_slug_key'
+    ) THEN
+        ALTER TABLE public.claims ADD CONSTRAINT claims_slug_key UNIQUE (slug);
+    END IF;
+END $$;
+
+
 CREATE TABLE IF NOT EXISTS public.claim_metrics (
     claim_id UUID REFERENCES public.claims(id) ON DELETE CASCADE PRIMARY KEY,
     laugh_count INTEGER DEFAULT 0,
