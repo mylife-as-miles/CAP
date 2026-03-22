@@ -151,7 +151,7 @@ export function buildResultViewFromCheck(
       reportNote: 'This report was generated using live Firecrawl search and Cap edge heuristics.',
     },
     share: {
-      footer: 'Checked with Firecrawl. Spoken by Cap on 11Labs.',
+      footer: 'Checked with Firecrawl Search • Spoken by Cap on ElevenLabs',
       shareText: `${verdict}\n"${response.spokenSummary}"`,
       shareTitle: 'CAP',
     },
@@ -180,12 +180,12 @@ export function buildResultViewFromClaim(claim: StoredClaimLike): ResultViewMode
       cards.length > 0
         ? cards
         : [
-            {
-              id: '01',
-              title: 'Published Claim',
-              text: 'This claim was saved earlier and does not have expanded discrepancy notes yet.',
-            },
-          ],
+          {
+            id: '01',
+            title: 'Published Claim',
+            text: 'This claim was saved earlier and does not have expanded discrepancy notes yet.',
+          },
+        ],
     sources,
     meta: {
       sourceCount: `${sources.length} Verified`,
@@ -195,7 +195,7 @@ export function buildResultViewFromClaim(claim: StoredClaimLike): ResultViewMode
       reportNote: 'This report was loaded from the CAP leaderboard without changing the existing result layout.',
     },
     share: {
-      footer: "Pulled from CAP's live leaderboard.",
+      footer: 'Checked with Firecrawl Search • Spoken by Cap on ElevenLabs',
       shareText: `${claim.verdict}\n"${claim.claim_text}"`,
       shareTitle: 'CAP',
     },

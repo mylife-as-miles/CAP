@@ -689,7 +689,7 @@ export default function App() {
   };
 
   const buildClaimShareCard = (claim: RankedClaim): ShareCardData => ({
-    footer: 'Pulled from CAP\'s live leaderboard.',
+    footer: 'Checked with Firecrawl Search • Spoken by Cap on ElevenLabs',
     shareText: `${claim.verdict}\n"${claim.claim_text}"`,
     shareTitle: 'CAP',
   });
@@ -2470,15 +2470,19 @@ export default function App() {
                       Result Verified
                     </span>
                   </div>
-                  <h1 className="font-headline text-[64px] sm:text-[80px] leading-none font-black text-primary uppercase italic tracking-tighter drop-shadow-[0_0_30px_rgba(226,36,31,0.4)] mb-4">
-                    CAP
+                  <h1 className={cn(
+                    "font-headline leading-none font-black text-primary uppercase italic tracking-tighter drop-shadow-[0_0_30px_rgba(226,36,31,0.4)] mb-4",
+                    (activeResult?.view.verdict.length ?? 0) > 8
+                      ? "text-[32px] sm:text-[48px]"
+                      : (activeResult?.view.verdict.length ?? 0) > 4
+                        ? "text-[48px] sm:text-[64px]"
+                        : "text-[64px] sm:text-[80px]"
+                  )}>
+                    {activeResult?.view.verdict ?? 'CAP'}
                   </h1>
 
                   {activeResult && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                      <div className="font-headline text-2xl sm:text-3xl font-black uppercase italic text-white tracking-widest leading-none">
-                        {activeResult.view.verdict}
-                      </div>
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                       <div className="relative">
                         <div className="absolute -inset-1 bg-primary/5 blur-xl rounded-full" />
                         <p className="relative font-body text-base sm:text-lg text-white font-medium leading-tight max-w-[240px] mx-auto italic">
