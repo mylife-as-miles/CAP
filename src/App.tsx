@@ -689,7 +689,7 @@ export default function App() {
   };
 
   const buildClaimShareCard = (claim: RankedClaim): ShareCardData => ({
-    footer: 'Checked with Firecrawl Search • Spoken by Cap on ElevenLabs',
+    footer: 'Checked with Firecrawl • Spoken by Cap on ElevenLabs',
     shareText: `${claim.verdict}\n"${claim.claim_text}"`,
     shareTitle: 'CAP',
   });

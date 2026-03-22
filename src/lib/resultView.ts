@@ -151,7 +151,7 @@ export function buildResultViewFromCheck(
       reportNote: 'This report was generated using live Firecrawl search and Cap edge heuristics.',
     },
     share: {
-      footer: 'Checked with Firecrawl Search • Spoken by Cap on ElevenLabs',
+      footer: 'Checked with Firecrawl • Spoken by Cap on ElevenLabs',
       shareText: `${verdict}\n"${response.spokenSummary}"`,
       shareTitle: 'CAP',
     },
@@ -195,7 +195,7 @@ export function buildResultViewFromClaim(claim: StoredClaimLike): ResultViewMode
       reportNote: 'This report was loaded from the CAP leaderboard without changing the existing result layout.',
     },
     share: {
-      footer: 'Checked with Firecrawl Search • Spoken by Cap on ElevenLabs',
+      footer: 'Checked with Firecrawl • Spoken by Cap on ElevenLabs',
       shareText: `${claim.verdict}\n"${claim.claim_text}"`,
       shareTitle: 'CAP',
     },
