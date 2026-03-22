@@ -2465,9 +2465,28 @@ export default function App() {
                 <div className="absolute top-0 left-0 w-full h-2 bg-primary" />
 
                 <div className="flex-1 p-8 flex flex-col items-center justify-center text-center relative z-10">
-                  <h1 className="font-headline text-[72px] sm:text-[96px] leading-none font-black text-primary uppercase italic tracking-tighter drop-shadow-[0_0_40px_rgba(226,36,31,0.6)]">
+                  <div className="mb-4">
+                    <span className="font-label text-[10px] uppercase tracking-[0.2em] px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
+                      Result Verified
+                    </span>
+                  </div>
+                  <h1 className="font-headline text-[64px] sm:text-[80px] leading-none font-black text-primary uppercase italic tracking-tighter drop-shadow-[0_0_30px_rgba(226,36,31,0.4)] mb-4">
                     CAP
                   </h1>
+
+                  {activeResult && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                      <div className="font-headline text-2xl sm:text-3xl font-black uppercase italic text-white tracking-widest leading-none">
+                        {activeResult.view.verdict}
+                      </div>
+                      <div className="relative">
+                        <div className="absolute -inset-1 bg-primary/5 blur-xl rounded-full" />
+                        <p className="relative font-body text-base sm:text-lg text-white font-medium leading-tight max-w-[240px] mx-auto italic">
+                          "{activeResult.view.claimText}"
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-6 text-center relative z-10 border-t border-white/5 bg-black/40">
