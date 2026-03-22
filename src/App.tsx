@@ -1803,6 +1803,14 @@ export default function App() {
                     {!canAddCurrentResultToTopCaps ? <Check size={20} /> : <Star size={20} fill="currentColor" />}
                     {addToTopCapsLabel}
                   </button>
+                  {activeResult && (activeResult.publishedClaimId || activeResult.view.claimId) && (
+                    <LaughButton
+                      celebrationKey={laughCelebrations[activeResult.publishedClaimId ?? activeResult.view.claimId ?? ''] ?? 0}
+                      onClick={(e) => handleLaugh(e, activeResult.publishedClaimId ?? activeResult.view.claimId ?? '')}
+                      className="px-4 sm:px-6 py-3 sm:py-4 bg-surface text-white font-headline font-black uppercase tracking-widest rounded-full hover:bg-surface-high border border-white/10 transition-all flex items-center justify-center gap-2 sm:gap-3 active:scale-95 whitespace-nowrap"
+                      title="Laugh at this result"
+                    />
+                  )}
                   <button
                     onClick={() => setIsFlagged(true)}
                     disabled={isFlagged}
