@@ -124,7 +124,9 @@ export default function App() {
   const [dataError, setDataError] = useState<string | null>(null);
   const [capOfDay, setCapOfDay] = useState<RankedClaim | null>(null);
   const [trendingCaps, setTrendingCaps] = useState<RankedClaim[]>([]);
+  const [newCaps, setNewCaps] = useState<RankedClaim[]>([]);
   const [leaderboardCaps, setLeaderboardCaps] = useState<RankedClaim[]>([]);
+
   const [leaderboardCategoryOptions, setLeaderboardCategoryOptions] = useState<string[]>([]);
   const [expandedCards, setExpandedCards] = useState<string[]>([]);
   const [activeResult, setActiveResult] = useState<ActiveResultState | null>(null);
@@ -164,15 +166,18 @@ export default function App() {
       const boardMode = mapSortToBoardMode(topCapsSortBy);
       const selectedCategory = topCapsFilterCategory === 'All' ? undefined : topCapsFilterCategory;
 
-      const [nextTrendingCaps, nextCapOfDay, nextLeaderboardCaps, categoryCatalog] = await Promise.all([
+      const [nextTrendingCaps, nextCapOfDay, nextLeaderboardCaps, nextNewCaps, categoryCatalog] = await Promise.all([
         getTrendingCaps(24),
         getCapOfDay(),
         getTopCapsBoard(boardMode, selectedCategory, 100),
+        getTopCapsBoard('date_added', undefined, 24),
         getTopCapsBoard('top_caps', undefined, 200),
       ]);
 
       setTrendingCaps(nextTrendingCaps);
+      setNewCaps(nextNewCaps);
       setCapOfDay(nextCapOfDay);
+
       setLeaderboardCaps(nextLeaderboardCaps);
       setLeaderboardCategoryOptions(Array.from(new Set(
         categoryCatalog
@@ -468,7 +473,9 @@ export default function App() {
   const patchClaimCollections = (claimId: string, updater: (claim: RankedClaim) => RankedClaim) => {
     setCapOfDay((current) => (current?.id === claimId ? updater(current) : current));
     setTrendingCaps((current) => current.map((claim) => (claim.id === claimId ? updater(claim) : claim)));
+    setNewCaps((current) => current.map((claim) => (claim.id === claimId ? updater(claim) : claim)));
     setLeaderboardCaps((current) => current.map((claim) => (claim.id === claimId ? updater(claim) : claim)));
+
   };
 
   const getClaimById = (claimId: string) => {
@@ -477,7 +484,9 @@ export default function App() {
     }
 
     return leaderboardCaps.find((claim) => claim.id === claimId)
-      ?? trendingCaps.find((claim) => claim.id === claimId);
+      ?? trendingCaps.find((claim) => claim.id === claimId)
+      ?? newCaps.find((claim) => claim.id === claimId);
+
   };
 
   const bumpClaimMetric = (claim: RankedClaim, metric: keyof RankedClaim['claim_metrics']) => ({
@@ -701,7 +710,9 @@ export default function App() {
     const currentClaim = getClaimById(publishedClaimId);
     const previousCapOfDay = capOfDay;
     const previousTrendingCaps = trendingCaps;
+    const previousNewCaps = newCaps;
     const previousLeaderboardCaps = leaderboardCaps;
+
 
     if (currentClaim) {
       patchClaimCollections(publishedClaimId, (claim) => bumpClaimMetric(claim, 'share_count'));
@@ -725,7 +736,9 @@ export default function App() {
 
     setCapOfDay(previousCapOfDay);
     setTrendingCaps(previousTrendingCaps);
+    setNewCaps(previousNewCaps);
     setLeaderboardCaps(previousLeaderboardCaps);
+
 
     if (data === 'rate_limited') {
       showToast("Take a breath! You're sharing too fast.");
@@ -746,7 +759,9 @@ export default function App() {
 
     const previousCapOfDay = capOfDay;
     const previousTrendingCaps = trendingCaps;
+    const previousNewCaps = newCaps;
     const previousLeaderboardCaps = leaderboardCaps;
+
 
     patchClaimCollections(currentClaim.id, (claim) => bumpClaimMetric(claim, 'share_count'));
     setShareCardData(buildClaimShareCard(currentClaim));
@@ -769,7 +784,9 @@ export default function App() {
     if (error || data === 'rate_limited') {
       setCapOfDay(previousCapOfDay);
       setTrendingCaps(previousTrendingCaps);
+      setNewCaps(previousNewCaps);
       setLeaderboardCaps(previousLeaderboardCaps);
+
       if (data === 'rate_limited') showToast("Take a breath! You're sharing too fast.");
     }
   };
@@ -788,7 +805,9 @@ export default function App() {
 
     const previousCapOfDay = capOfDay;
     const previousTrendingCaps = trendingCaps;
+    const previousNewCaps = newCaps;
     const previousLeaderboardCaps = leaderboardCaps;
+
 
     patchClaimCollections(currentClaim.id, (claim) => bumpClaimMetric(claim, 'laugh_count'));
 
@@ -810,8 +829,10 @@ export default function App() {
     if (error || data === 'already_counted') {
       setCapOfDay(previousCapOfDay);
       setTrendingCaps(previousTrendingCaps);
+      setNewCaps(previousNewCaps);
       setLeaderboardCaps(previousLeaderboardCaps);
     }
+
   };
 
   const handleViewClaim = async (
@@ -822,7 +843,9 @@ export default function App() {
     const visitorId = getOrCreateVisitorId();
     const previousCapOfDay = capOfDay;
     const previousTrendingCaps = trendingCaps;
+    const previousNewCaps = newCaps;
     const previousLeaderboardCaps = leaderboardCaps;
+
 
     if (getClaimById(claimId)) {
       patchClaimCollections(claimId, (claim) => bumpClaimMetric(claim, 'view_count'));
@@ -836,8 +859,10 @@ export default function App() {
     if (error || data === 'already_counted') {
       setCapOfDay(previousCapOfDay);
       setTrendingCaps(previousTrendingCaps);
+      setNewCaps(previousNewCaps);
       setLeaderboardCaps(previousLeaderboardCaps);
     }
+
 
     void trackEvent('verdict_viewed', claimId, { source });
     if (trackReplay) {
@@ -1369,6 +1394,54 @@ export default function App() {
                   )}
                 </div>
               </div>
+
+              {/* New Caps Section */}
+              <div className="w-full mt-12 md:mt-24">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-6 md:mb-8">
+                  <div>
+                    <span className="font-label text-[10px] sm:text-xs uppercase tracking-[0.3em] text-secondary mb-2 block">New Investigations</span>
+                    <h2 className="font-headline text-3xl sm:text-4xl font-black uppercase tracking-tighter">New Caps</h2>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setTopCapsSortBy('Date Added');
+                      setScreen('top');
+                    }}
+                    className="font-label text-xs uppercase tracking-[0.2em] text-tertiary hover:opacity-80 transition-opacity font-bold"
+                    style={{ textShadow: '-1.5px 0 0 #FF3B30, 1.5px 0 0 #34C759' }}
+                  >
+                    View All New
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {isLoading ? (
+                    [1, 2, 3].map(i => (
+                      <div key={i} className="bg-surface h-64 rounded-3xl animate-pulse border border-white/5" />
+                    ))
+                  ) : newCaps.length > 0 ? (
+                    newCaps.slice(0, 3).map(item => (
+                      <TrendCard
+                        key={item.id}
+                        type={item.verdict}
+                        category={item.category}
+                        time={formatRelativeTime(item.created_at)}
+                        claim={item.claim_text}
+                        stats={`${formatNumber(item.claim_metrics.share_count)} shares • ${formatNumber(item.claim_metrics.laugh_count)} laughs`}
+                        onClick={() => {
+                          void openStoredClaimResult(item, 'trends');
+                        }}
+                        onBadgeClick={(e) => {
+                          e.stopPropagation();
+                          setScreen('top');
+                        }}
+                      />
+                    ))
+                  ) : (
+                    <div className="col-span-3 text-center py-12 text-outline">No new investigations found.</div>
+                  )}
+                </div>
+              </div>
+
             </motion.div>
           )}
 
