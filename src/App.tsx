@@ -30,7 +30,7 @@ import { trackEvent, trackEventOncePerWindow, initAnalytics } from '@/src/lib/an
 import { CAP_DEFAULT_QUESTION } from '@/shared/cap';
 import type { RankedClaim, TopCapsBoardMode } from '@/shared/leaderboard';
 
-type Screen = 'home' | 'listening' | 'checking' | 'results' | 'top' | 'history' | 'profile' | 'notifications' | 'trends';
+type Screen = 'home' | 'listening' | 'checking' | 'results' | 'top' | 'history' | 'profile' | 'notifications' | 'trends' | 'new';
 type ClaimTarget = 'cap-of-day' | string;
 type TopCapsSortBy = 'Top Caps' | 'Caught in 4K' | 'Date Added';
 
@@ -50,7 +50,7 @@ interface ActiveResultState {
   checkContext?: HistoryEntry['context'];
 }
 
-const DISCLAIMER_SCREENS: Screen[] = ['results', 'top', 'history', 'notifications', 'trends'];
+const DISCLAIMER_SCREENS: Screen[] = ['results', 'top', 'history', 'notifications', 'trends', 'new'];
 
 function sortByCreatedAtDesc<T extends { createdAt: string }>(items: T[]) {
   return [...items].sort((left, right) => (
@@ -603,7 +603,7 @@ export default function App() {
 
   const openStoredClaimResult = async (
     claim: RankedClaim,
-    source: 'home_trending' | 'trends' | 'top_board',
+    source: 'home_trending' | 'trends' | 'top_board' | 'new_listing',
   ) => {
     resetResultFlags();
     setActiveCheckLabel(claim.claim_text);
@@ -837,7 +837,7 @@ export default function App() {
 
   const handleViewClaim = async (
     claimId: string,
-    source: 'home_trending' | 'trends' | 'top_board' | 'history',
+    source: 'home_trending' | 'trends' | 'top_board' | 'history' | 'new_listing',
     trackReplay = false,
   ) => {
     const visitorId = getOrCreateVisitorId();
@@ -1404,8 +1404,7 @@ export default function App() {
                   </div>
                   <button
                     onClick={() => {
-                      setTopCapsSortBy('Date Added');
-                      setScreen('top');
+                      setScreen('new');
                     }}
                     className="font-label text-xs uppercase tracking-[0.2em] text-tertiary hover:opacity-80 transition-opacity font-bold"
                     style={{ textShadow: '-1.5px 0 0 #FF3B30, 1.5px 0 0 #34C759' }}
@@ -2380,6 +2379,54 @@ export default function App() {
                 ) : (
                   <div className="col-span-full rounded-3xl border border-dashed border-white/10 bg-surface p-12 text-center text-outline">
                     No live trends yet.
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {screen === 'new' && (
+            <motion.div
+              key="new"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="w-full max-w-7xl mx-auto"
+            >
+              <div className="flex flex-col items-center text-center mb-16">
+                <span className="font-label text-xs uppercase tracking-[0.3em] text-secondary mb-4 block">Latest Intelligence</span>
+                <h1 className="font-headline text-5xl md:text-7xl font-black uppercase italic tracking-tighter mb-6 text-white">New Caps</h1>
+                <p className="text-outline font-body text-lg max-w-2xl">
+                  The latest investigations, fresh from the network. See what's being fact-checked right now.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {isLoading ? (
+                  [1, 2, 3, 4, 5, 6].map((index) => (
+                    <div key={index} className="bg-surface h-64 rounded-3xl animate-pulse border border-white/5" />
+                  ))
+                ) : newCaps.length > 0 ? (
+                  newCaps.map((item) => (
+                    <TrendCard
+                      key={item.id}
+                      type={item.verdict}
+                      category={item.category}
+                      time={formatRelativeTime(item.created_at)}
+                      claim={item.claim_text}
+                      stats={`${formatNumber(item.claim_metrics.share_count)} shares • ${formatNumber(item.claim_metrics.laugh_count)} laughs`}
+                      onClick={() => {
+                        void openStoredClaimResult(item, 'new_listing');
+                      }}
+                      onBadgeClick={(e) => {
+                        e.stopPropagation();
+                        setScreen('top');
+                      }}
+                    />
+                  ))
+                ) : (
+                  <div className="col-span-full rounded-3xl border border-dashed border-white/10 bg-surface p-12 text-center text-outline">
+                    No new investigations found.
                   </div>
                 )}
               </div>
