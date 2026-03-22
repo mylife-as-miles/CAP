@@ -331,7 +331,89 @@ function buildSourceSignals(input: ParsedInput, results: FirecrawlResult[]) {
   });
 }
 
-function synthesizeVerdict(input: ParsedInput, results: FirecrawlResult[], normalizedQuery: string): CheckClaimResponse {
+async function callAiSynthesis(
+  input: ParsedInput,
+  results: FirecrawlResult[],
+  normalizedQuery: string
+): Promise<CheckClaimResponse | null> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
+  if (!apiKey) return null;
+
+  const context = results.slice(0, 10).map((r, i) => `
+Source [${i + 1}]: ${r.title || 'Untitled'}
+URL: ${r.url || 'N/A'}
+Snippet: ${extractSnippet(r)}
+`).join('\n');
+
+  const prompt = `
+You are CAP, the ultimate Information Verification Oracle. 
+Your task is to analyze a claim and search evidence to resolve a definitive verdict.
+
+User Question: "${input.question}"
+Core Claim: "${input.claimText || input.question}"
+Search Results Context:
+${context || 'No direct search matches found.'}
+
+RESOLUTION PROTOCOL:
+1. EVIDENCE STRENGTH: How credible and specific are the sources? (Official sites, major news, primary sources > blogs/social).
+2. CLAIM PLAUSIBILITY: Based on logic and world knowledge, is this claim physically possible or common misinformation?
+3. VERDICT RESOLUTION:
+   - NO_CAP: Strong supporting evidence from credible sources.
+   - CAP: Direct refutation OR absolute logical nonsense OR a debunked myth.
+   - HALF_CAP: Mix of truth and exaggeration, or missing vital nuance.
+   - UNVERIFIED: Plausible but completely unsearchable/new, or truly ambiguous.
+
+RULES:
+- If search results are EMPTY but the claim is LUDICROUS/IMPOSSIBLE (e.g. "gravity stopped"), call CAP immediately.
+- If search results are EMPTY but the claim is MUNDANE/SPECIFIC (e.g. "I ate a burger"), call UNVERIFIED.
+- Be funny, witty, and sharp in the spoken_summary.
+- Keep the spoken_summary to 1 short sentence.
+
+Output EXACTLY this JSON format:
+{
+  "verdict": "CAP" | "NO_CAP" | "HALF_CAP" | "UNVERIFIED",
+  "confidence": number (0-100),
+  "reasons": [string, string, string],
+  "plausibility_score": number (0.0-1.0),
+  "spoken_summary": "Short witty verdict"
+}
+`;
+
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          response_mime_type: "application/json",
+          temperature: 0.1,
+        }
+      })
+    });
+
+    if (!response.ok) throw new Error('AI Synthesis failed');
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('Empty AI response');
+
+    const result = JSON.parse(text);
+    return {
+      verdict: result.verdict,
+      confidence: clampConfidence(result.confidence),
+      reasons: result.reasons,
+      spokenSummary: result.spoken_summary,
+      sources: normalizeSources(results),
+      normalizedQuery,
+      rawSearchSummary: `AI Synthesis (Plausibility: ${result.plausibility_score}). Sources reviewed: ${results.length}.`,
+    };
+  } catch (err) {
+    console.error('[check-claim] AI Synthesis error:', err);
+    return null;
+  }
+}
+
+function synthesizeVerdictFallback(input: ParsedInput, results: FirecrawlResult[], normalizedQuery: string): CheckClaimResponse {
   const signals = buildSourceSignals(input, results).sort((left, right) => right.relevance - left.relevance);
   const rankedResults = signals.map((signal) => signal.result);
   const topSources = normalizeSources(rankedResults);
@@ -357,25 +439,14 @@ function synthesizeVerdict(input: ParsedInput, results: FirecrawlResult[], norma
     verdict = 'CAP';
     confidence = clampConfidence(66 + contradictionCount * 9 + credibleCount * 4);
     reasons.push('Multiple relevant sources push back on the claim instead of supporting it.');
-    if (selfServingCount > 0) {
-      reasons.push('Some support comes from the same domain tied to the claim, which weakens trust.');
-    }
   } else if (supportCount >= 2 && contradictionCount === 0) {
     verdict = 'NO_CAP';
     confidence = clampConfidence(72 + supportCount * 8 + credibleCount * 4);
     reasons.push('Several credible sources align with the core claim.');
-    reasons.push('The strongest results are not limited to a single self-interested source.');
   } else if (nuanceCount > 0 || (supportCount > 0 && contradictionCount > 0)) {
     verdict = 'HALF_CAP';
     confidence = clampConfidence(52 + nuanceCount * 7 + credibleCount * 4);
     reasons.push('The evidence points to a real signal, but the strongest sources add missing nuance.');
-    if (contradictionCount > 0) {
-      reasons.push('Some sources support part of the claim while others push back on the framing.');
-    }
-  } else if (supportCount === 1 && credibleCount >= 2) {
-    verdict = 'HALF_CAP';
-    confidence = clampConfidence(48 + credibleCount * 5);
-    reasons.push('Cap found some support, but the evidence is thinner than the claim suggests.');
   } else {
     verdict = 'UNVERIFIED';
     confidence = clampConfidence(32 + credibleCount * 4);
@@ -383,38 +454,10 @@ function synthesizeVerdict(input: ParsedInput, results: FirecrawlResult[], norma
   }
 
   const variety = {
-    CAP: [
-      'That is cap.',
-      'Absolute cap.',
-      'Total fiction.',
-      'Busted.',
-      'That is a myth.',
-      'Categorically false.',
-      'Pure cap.',
-    ],
-    NO_CAP: [
-      'No cap detected.',
-      'That is no cap.',
-      'Solid truth.',
-      'Fact-check passed.',
-      'Verified.',
-      'Confirmed.',
-      'Legit.',
-    ],
-    HALF_CAP: [
-      'Half cap.',
-      'Partial truth.',
-      'Missing context.',
-      'Mixed signals.',
-      'Nuanced reality.',
-    ],
-    UNVERIFIED: [
-      'Evidence inconclusive.',
-      'Signal too weak.',
-      'Jury is still out.',
-      'Unverified.',
-      'Sources are ghosting.',
-    ],
+    CAP: ['That is cap.', 'Absolute cap.', 'Total fiction.', 'Busted.'],
+    NO_CAP: ['No cap detected.', 'Verified truth.', 'Legit.'],
+    HALF_CAP: ['Half cap.', 'Missing context.', 'Nuanced reality.'],
+    UNVERIFIED: ['Evidence inconclusive.', 'Unverified.', 'Jury is still out.'],
   };
 
   const prefixes = variety[verdict];
@@ -423,13 +466,14 @@ function synthesizeVerdict(input: ParsedInput, results: FirecrawlResult[], norma
   return {
     confidence,
     normalizedQuery,
-    rawSearchSummary: `Sources reviewed: ${signals.length}. Credible: ${credibleCount}. Support: ${supportCount}. Contradictions: ${contradictionCount}.`,
+    rawSearchSummary: `Fallback Heistic. Sources: ${signals.length}.`,
     reasons: reasons.slice(0, 3),
     sources: topSources,
     spokenSummary: `${spokenPrefix} ${reasons[0]}`,
     verdict,
   };
 }
+
 
 async function callFirecrawl(input: ParsedInput, normalizedQuery: string) {
   const payload: Record<string, unknown> = {
