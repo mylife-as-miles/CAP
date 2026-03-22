@@ -60,6 +60,19 @@ CREATE TABLE IF NOT EXISTS public.claims (
 -- Ensure slug is unique, even if table was created before the UNIQUE keyword was added
 DO $$
 BEGIN
+    -- CLEANUP: Resolve any existing duplicate slugs by appending a short ID suffix
+    UPDATE public.claims
+    SET slug = slug || '-' || substr(id::text, 1, 8)
+    WHERE id IN (
+        SELECT id
+        FROM (
+            SELECT id, ROW_NUMBER() OVER (PARTITION BY slug ORDER BY created_at DESC) as rn
+            FROM public.claims
+            WHERE slug IS NOT NULL
+        ) t
+        WHERE t.rn > 1
+    );
+
     IF NOT EXISTS (
         SELECT 1
         FROM pg_constraint
@@ -68,6 +81,7 @@ BEGIN
         ALTER TABLE public.claims ADD CONSTRAINT claims_slug_key UNIQUE (slug);
     END IF;
 END $$;
+
 
 
 CREATE TABLE IF NOT EXISTS public.claim_metrics (
@@ -102,7 +116,11 @@ CREATE TABLE IF NOT EXISTS public.analytics_events (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     visitor_id TEXT NOT NULL REFERENCES public.app_visitors(visitor_id) ON DELETE CASCADE,
     event_name TEXT NOT NULL CHECK (
-        event_name IN ('session_started', 'claim_checked', 'verdict_viewed', 'laugh_clicked', 'share_clicked', 'top_caps_viewed', 'voice_session_started', 'voice_session_completed')
+        event_name IN (
+            'session_started', 'claim_checked', 'verdict_viewed', 'laugh_clicked', 
+            'share_clicked', 'top_caps_viewed', 'voice_session_started', 'voice_session_completed',
+            'detail_opened', 'source_clicked', 'verdict_replayed', 'dwell_quality_reported'
+        )
     ),
     claim_id UUID REFERENCES public.claims(id) ON DELETE SET NULL,
     metadata JSONB DEFAULT '{}'::jsonb,
@@ -198,7 +216,11 @@ END $$;
 
 ALTER TABLE public.analytics_events
 ADD CONSTRAINT analytics_events_event_name_check CHECK (
-    event_name IN ('session_started', 'claim_checked', 'verdict_viewed', 'laugh_clicked', 'share_clicked', 'top_caps_viewed', 'voice_session_started', 'voice_session_completed')
+    event_name IN (
+        'session_started', 'claim_checked', 'verdict_viewed', 'laugh_clicked', 
+        'share_clicked', 'top_caps_viewed', 'voice_session_started', 'voice_session_completed',
+        'detail_opened', 'source_clicked', 'verdict_replayed', 'dwell_quality_reported'
+    )
 );
 
 -- 3. INDEXES & CONSTRAINTS
