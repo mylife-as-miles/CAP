@@ -413,6 +413,19 @@ Output EXACTLY this JSON format:
   }
 }
 
+async function synthesizeVerdict(
+  input: ParsedInput,
+  results: FirecrawlResult[],
+  normalizedQuery: string
+): Promise<CheckClaimResponse> {
+  const aiResult = await callAiSynthesis(input, results, normalizedQuery);
+  if (aiResult) {
+    return aiResult;
+  }
+
+  return synthesizeVerdictFallback(input, results, normalizedQuery);
+}
+
 function synthesizeVerdictFallback(input: ParsedInput, results: FirecrawlResult[], normalizedQuery: string): CheckClaimResponse {
   const signals = buildSourceSignals(input, results).sort((left, right) => right.relevance - left.relevance);
   const rankedResults = signals.map((signal) => signal.result);
@@ -647,7 +660,7 @@ Deno.serve(async (request) => {
     return jsonResponse(firecrawlResult, firecrawlResult.error.code === 'TIMEOUT' ? 408 : 502, origin);
   }
 
-  const result = synthesizeVerdict(parsed, firecrawlResult.results, normalizedQuery);
+  const result = await synthesizeVerdict(parsed, firecrawlResult.results, normalizedQuery);
   if (result.sources.length === 0) {
     result.reasons = ['Cap found too little reliable evidence to verify the claim cleanly.'];
     result.verdict = 'UNVERIFIED';
