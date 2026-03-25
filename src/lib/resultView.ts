@@ -47,6 +47,8 @@ const ANALYSIS_TITLES = [
   'Cross-Source Read',
 ];
 
+const MAX_RESULT_SOURCES = 15;
+
 function confidenceLabel(confidence: number) {
   if (confidence >= 75) {
     return 'High';
@@ -128,7 +130,7 @@ export function buildResultViewFromCheck(
       ? response.reasons
       : ['Cap found weak evidence and could not build a stronger verdict explanation.'],
   );
-  const sources = response.sources.slice(0, 3).map((source) => ({
+  const sources = response.sources.slice(0, MAX_RESULT_SOURCES).map((source) => ({
     name: normalizeSourceName(source.title, source.url),
     url: source.url,
     text: source.snippet,
@@ -146,7 +148,7 @@ export function buildResultViewFromCheck(
     analysisCards: cards,
     sources,
     meta: {
-      sourceCount: `${sources.length || response.sources.length} Reviewed`,
+      sourceCount: `${response.sources.length || sources.length} Reviewed`,
       auditSpeed: auditSeconds,
       lastChecked: formatTimestamp(Date.now()),
       refId: createRefId(displayText),
@@ -166,7 +168,7 @@ export function buildResultViewFromClaim(claim: StoredClaimLike): ResultViewMode
   const cards = toAnalysisCards(
     [claim.reason_summary, claim.details].filter((value): value is string => Boolean(value?.trim())),
   );
-  const sources = (claim.sources ?? []).slice(0, 3).map((source) => ({
+  const sources = (claim.sources ?? []).slice(0, MAX_RESULT_SOURCES).map((source) => ({
     name: source.name || normalizeSourceName('', source.url),
     url: source.url,
     text: source.text ?? 'No snippet available for this published claim.',

@@ -47,7 +47,9 @@ type ClaimRiskProfile = {
   absurdAmount: boolean;
   brandBaitCount: number;
   classicAdvanceFee: boolean;
+  directAwardLanguage: boolean;
   paymentBaitCount: number;
+  personalWindfallClaim: boolean;
   suspiciousScam: boolean;
   suspiciousWindfall: boolean;
   urgencyCount: number;
@@ -165,9 +167,14 @@ const PAYMENT_BAIT_TERMS = [
 ];
 
 const BRAND_BAIT_TERMS = [
+  '11 lab',
+  '11 labs',
   'amazon',
   'apple',
   'cash app',
+  'eleven lab',
+  'eleven labs',
+  'eleven laps',
   'elevenlabs',
   'google',
   'meta',
@@ -185,6 +192,21 @@ const URGENCY_TERMS = [
   'limited time',
   'right now',
   'urgent',
+];
+
+const DIRECT_AWARD_TERMS = [
+  'i got',
+  'i have been given',
+  'i received',
+  'i won',
+  'someone gave me',
+  'someone said i won',
+  'someone told me',
+  'the user got',
+  'the user received',
+  'the user won',
+  'they gave me',
+  'they said i won',
 ];
 
 function jsonResponse(body: CheckClaimResponse | CheckClaimError, status: number, origin: string | null) {
@@ -439,6 +461,7 @@ function buildClaimRiskProfile(input: ParsedInput): ClaimRiskProfile {
   const advanceFeeCount = countPhraseMatches(text, ADVANCE_FEE_TERMS);
   const paymentBaitCount = countPhraseMatches(text, PAYMENT_BAIT_TERMS);
   const brandBaitCount = countPhraseMatches(text, BRAND_BAIT_TERMS);
+  const directAwardLanguage = countPhraseMatches(text, DIRECT_AWARD_TERMS) > 0;
   const urgencyCount = countPhraseMatches(text, URGENCY_TERMS);
   const absurdAmount =
     /\b\d{1,3}(?:,\d{3})+\b/.test(text) ||
@@ -448,15 +471,18 @@ function buildClaimRiskProfile(input: ParsedInput): ClaimRiskProfile {
   const classicAdvanceFee = advanceFeeCount > 0 && (windfallCount > 0 || paymentBaitCount > 0 || absurdAmount);
   const suspiciousWindfall =
     windfallCount > 0 && (brandBaitCount > 0 || absurdAmount || urgencyCount > 0 || paymentBaitCount > 0);
+  const personalWindfallClaim = directAwardLanguage && windfallCount > 0 && absurdAmount;
   const suspiciousScam =
-    classicAdvanceFee || (suspiciousWindfall && paymentBaitCount > 0) || (suspiciousWindfall && absurdAmount);
+    classicAdvanceFee || personalWindfallClaim || (suspiciousWindfall && paymentBaitCount > 0) || (suspiciousWindfall && absurdAmount);
 
   return {
     advanceFeeCount,
     absurdAmount,
     brandBaitCount,
     classicAdvanceFee,
+    directAwardLanguage,
     paymentBaitCount,
+    personalWindfallClaim,
     suspiciousScam,
     suspiciousWindfall,
     urgencyCount,
@@ -483,6 +509,10 @@ function buildSpokenSummary(
 ) {
   const preferred = preferredSummary?.trim();
   if (verdict === 'CAP') {
+    if (risk.personalWindfallClaim && risk.brandBaitCount > 0) {
+      return 'Cap. Someone told you that you won a giant brand giveaway, then expected that cartoon scam to sound believable.';
+    }
+
     if (risk.brandBaitCount > 0 && risk.absurdAmount && risk.windfallCount > 0) {
       return 'Cap. Someone invented a giant giveaway, slapped a fake tax on it, and expected that nonsense to sound premium.';
     }
@@ -555,6 +585,7 @@ RULES:
 - Default to a skeptical stance. If the claim has the shape of a scam, fake giveaway, fake payout, or classic advance-fee hustle, do not hedge.
 - Treat giant surprise windfalls, brand-name giveaways, miracle credits, and any "pay a fee/tax/deposit to unlock it" story as CAP unless strong primary-source evidence proves otherwise.
 - If a claim sounds like "I got millions in brand credits / giveaway money," you should assume scam energy and the spoken_summary can openly mock how fake the setup sounds.
+- If the claim is phrased as a personal win or direct message ("someone told me I won...", "they gave me...", "I got millions of credits"), treat that as a strong scam indicator, not a neutral claim.
 - If search results are EMPTY but the claim is LUDICROUS/IMPOSSIBLE (e.g. "gravity stopped"), call CAP immediately.
 - If search results are EMPTY but the claim is MUNDANE/SPECIFIC (e.g. "I ate a burger"), call UNVERIFIED.
 - If the claim describes a scammy payout with a fake tax or release fee, call it CAP and roast the scam logic, not the victim.
@@ -603,6 +634,13 @@ Output EXACTLY this JSON format:
       confidence = Math.max(confidence, 88);
       reasons = [
         'This reads like a classic advance-fee scam: the claim invents a huge payout, then adds a fake tax or release fee to squeeze money out of you.',
+        ...reasons,
+      ];
+    } else if (claimRisk.personalWindfallClaim) {
+      verdict = 'CAP';
+      confidence = Math.max(confidence, 84);
+      reasons = [
+        'This sounds like a personal windfall scam: a random person supposedly hands you a giant reward with no credible proof that the payout is real.',
         ...reasons,
       ];
     } else if (claimRisk.suspiciousWindfall && verdict !== 'NO_CAP') {
@@ -667,6 +705,13 @@ function synthesizeVerdictFallback(input: ParsedInput, results: FirecrawlResult[
     reasons.push('This reads like a classic advance-fee scam: a giant payout appears first, then a made-up tax or release fee shows up to milk the target.');
     if (claimRisk.brandBaitCount > 0) {
       reasons.push('Name-dropping a familiar brand next to a ridiculous reward is scam theater, not evidence.');
+    }
+  } else if (claimRisk.personalWindfallClaim) {
+    verdict = 'CAP';
+    confidence = clampConfidence(80 + claimRisk.windfallCount * 3 + (claimRisk.brandBaitCount > 0 ? 4 : 0));
+    reasons.push('This sounds like a personal windfall scam: a random message claims you won a giant reward, but there is no credible proof the payout exists.');
+    if (claimRisk.brandBaitCount > 0) {
+      reasons.push('Dropping a recognizable brand name into a surprise reward story is scam seasoning, not evidence.');
     }
   } else if (claimRisk.suspiciousWindfall && supportCount === 0) {
     verdict = 'CAP';

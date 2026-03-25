@@ -1793,9 +1793,9 @@ export default function App() {
                   <section className="mb-16 md:mb-24">
                     <h3 className="font-headline text-xl uppercase tracking-widest text-outline mb-8 flex items-center gap-2">
                       <span className="w-8 h-[1px] bg-outline"></span>
-                      {resultView.sources.length > 0 ? `Top ${Math.min(resultView.sources.length, 3)} Influential Sources` : 'Influential Sources'}
+                      {resultView.sources.length > 0 ? `${resultView.sources.length} Influential Sources` : 'Influential Sources'}
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                       {resultView.sources.length > 0 ? resultView.sources.map((source, i) => (
                         <a
                           key={i}
