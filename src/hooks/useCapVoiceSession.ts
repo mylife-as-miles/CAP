@@ -13,6 +13,16 @@ interface UseCapVoiceSessionOptions {
   onError?: (message: string) => void;
 }
 
+function toVoiceToolResponse(response: CheckClaimResponse) {
+  return {
+    confidence: response.confidence,
+    reason: response.reasons[0] ?? '',
+    sourceCount: response.sources.length,
+    spokenSummary: response.spokenSummary,
+    verdict: response.verdict,
+  };
+}
+
 export function useCapVoiceSession({
   visitorId,
   onCheckClaim,
@@ -26,7 +36,7 @@ export function useCapVoiceSession({
   const conversation = useConversation({
     clientTools: {
       check_claim: (async (parameters: VoiceToolPayload) => {
-        return onCheckClaim({
+        const response = await onCheckClaim({
           question: parameters.question?.trim() || CAP_DEFAULT_QUESTION,
           claimText: parameters.claimText?.trim(),
           url: parameters.url?.trim(),
@@ -35,6 +45,7 @@ export function useCapVoiceSession({
           metadata: parameters.metadata,
           persistResult: false,
         });
+        return toVoiceToolResponse(response);
       }) as any,
     },
     onMessage: (message: any) => {
