@@ -42,6 +42,18 @@ type FirecrawlPayload = {
   warning?: string | null;
 };
 
+type ClaimRiskProfile = {
+  advanceFeeCount: number;
+  absurdAmount: boolean;
+  brandBaitCount: number;
+  classicAdvanceFee: boolean;
+  paymentBaitCount: number;
+  suspiciousScam: boolean;
+  suspiciousWindfall: boolean;
+  urgencyCount: number;
+  windfallCount: number;
+};
+
 const CREDIBLE_DOMAINS = [
   'apnews.com',
   'bbc.com',
@@ -98,6 +110,81 @@ const NUANCE_TERMS = [
   'overstates',
   'partly',
   'partially',
+];
+
+const SCAM_WINDFALL_TERMS = [
+  'airdrop',
+  'beneficiary',
+  'bonus',
+  'claim your prize',
+  'credits',
+  'donation',
+  'free money',
+  'fund released',
+  'giveaway',
+  'gift',
+  'grant',
+  'inheritance',
+  'jackpot',
+  'lottery',
+  'prize',
+  'promo',
+  'reward',
+  'winner',
+  'won',
+];
+
+const ADVANCE_FEE_TERMS = [
+  'activation fee',
+  'admin fee',
+  'clearance fee',
+  'customs fee',
+  'delivery fee',
+  'deposit',
+  'fee',
+  'handling fee',
+  'insurance fee',
+  'processing fee',
+  'release fee',
+  'service charge',
+  'shipping fee',
+  'tax',
+  'unlock fee',
+];
+
+const PAYMENT_BAIT_TERMS = [
+  'bank details',
+  'bitcoin',
+  'crypto',
+  'gift card',
+  'send money',
+  'transfer',
+  'usdt',
+  'wallet',
+  'wire fee',
+];
+
+const BRAND_BAIT_TERMS = [
+  'amazon',
+  'apple',
+  'cash app',
+  'elevenlabs',
+  'google',
+  'meta',
+  'microsoft',
+  'openai',
+  'paypal',
+  'tiktok',
+];
+
+const URGENCY_TERMS = [
+  'act now',
+  'asap',
+  'expires today',
+  'immediately',
+  'limited time',
+  'right now',
+  'urgent',
 ];
 
 function jsonResponse(body: CheckClaimResponse | CheckClaimError, status: number, origin: string | null) {
@@ -331,6 +418,106 @@ function buildSourceSignals(input: ParsedInput, results: FirecrawlResult[]) {
   });
 }
 
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function countPhraseMatches(text: string, phrases: string[]) {
+  return phrases.filter((phrase) => {
+    const pattern = `\\b${escapeRegex(phrase).replace(/\\ /g, '\\s+')}\\b`;
+    return new RegExp(pattern, 'i').test(text);
+  }).length;
+}
+
+function buildClaimRiskProfile(input: ParsedInput): ClaimRiskProfile {
+  const text = [input.question, input.claimText, input.url]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .join(' ')
+    .toLowerCase();
+
+  const windfallCount = countPhraseMatches(text, SCAM_WINDFALL_TERMS);
+  const advanceFeeCount = countPhraseMatches(text, ADVANCE_FEE_TERMS);
+  const paymentBaitCount = countPhraseMatches(text, PAYMENT_BAIT_TERMS);
+  const brandBaitCount = countPhraseMatches(text, BRAND_BAIT_TERMS);
+  const urgencyCount = countPhraseMatches(text, URGENCY_TERMS);
+  const absurdAmount =
+    /\b\d{1,3}(?:,\d{3})+\b/.test(text) ||
+    /\b\d+(?:\.\d+)?\s*(million|billion|trillion|bn)\b/.test(text) ||
+    /\b\d{7,}\b/.test(text);
+
+  const classicAdvanceFee = advanceFeeCount > 0 && (windfallCount > 0 || paymentBaitCount > 0 || absurdAmount);
+  const suspiciousWindfall =
+    windfallCount > 0 && (brandBaitCount > 0 || absurdAmount || urgencyCount > 0 || paymentBaitCount > 0);
+  const suspiciousScam =
+    classicAdvanceFee || (suspiciousWindfall && paymentBaitCount > 0) || (suspiciousWindfall && absurdAmount);
+
+  return {
+    advanceFeeCount,
+    absurdAmount,
+    brandBaitCount,
+    classicAdvanceFee,
+    paymentBaitCount,
+    suspiciousScam,
+    suspiciousWindfall,
+    urgencyCount,
+    windfallCount,
+  };
+}
+
+function normalizeReasons(value: unknown, fallback: string) {
+  const reasons = Array.isArray(value)
+    ? value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter(Boolean)
+    : [];
+
+  return reasons.length > 0 ? reasons : [fallback];
+}
+
+function buildSpokenSummary(
+  verdict: CapApiVerdict,
+  primaryReason: string,
+  risk: ClaimRiskProfile,
+  preferredSummary?: string,
+) {
+  const preferred = preferredSummary?.trim();
+  if (verdict === 'CAP') {
+    if (risk.brandBaitCount > 0 && risk.absurdAmount && risk.windfallCount > 0) {
+      return 'Cap. Someone invented a giant giveaway, slapped a fake tax on it, and expected that nonsense to sound premium.';
+    }
+
+    if (risk.classicAdvanceFee) {
+      return 'Cap. That sounds like someone invented a giveaway, stapled on a fake tax, and hoped common sense was on airplane mode.';
+    }
+
+    if (risk.suspiciousWindfall || risk.suspiciousScam) {
+      return 'Cap. That payout story sounds like a scam pitch wearing a party hat and fake receipts.';
+    }
+
+    if (preferred) {
+      return preferred;
+    }
+
+    return `Cap. ${primaryReason}`;
+  }
+
+  if (preferred) {
+    return preferred;
+  }
+
+  const variety = {
+    CAP: ['That is cap.', 'Absolute cap.', 'Total fiction.', 'Busted.'],
+    NO_CAP: ['No cap detected.', 'Verified truth.', 'Legit.'],
+    HALF_CAP: ['Half cap.', 'Missing context.', 'Nuanced reality.'],
+    UNVERIFIED: ['Evidence inconclusive.', 'Unverified.', 'Jury is still out.'],
+  };
+
+  const prefixes = variety[verdict];
+  const spokenPrefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+  return `${spokenPrefix} ${primaryReason}`;
+}
+
 async function callAiSynthesis(
   input: ParsedInput,
   results: FirecrawlResult[],
@@ -338,6 +525,7 @@ async function callAiSynthesis(
 ): Promise<CheckClaimResponse | null> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) return null;
+  const claimRisk = buildClaimRiskProfile(input);
 
   const context = results.slice(0, 10).map((r, i) => `
 Source [${i + 1}]: ${r.title || 'Untitled'}
@@ -364,9 +552,13 @@ RESOLUTION PROTOCOL:
    - UNVERIFIED: Plausible but completely unsearchable/new, or truly ambiguous.
 
 RULES:
+- Default to a skeptical stance. If the claim has the shape of a scam, fake giveaway, fake payout, or classic advance-fee hustle, do not hedge.
+- Treat giant surprise windfalls, brand-name giveaways, miracle credits, and any "pay a fee/tax/deposit to unlock it" story as CAP unless strong primary-source evidence proves otherwise.
+- If a claim sounds like "I got millions in brand credits / giveaway money," you should assume scam energy and the spoken_summary can openly mock how fake the setup sounds.
 - If search results are EMPTY but the claim is LUDICROUS/IMPOSSIBLE (e.g. "gravity stopped"), call CAP immediately.
 - If search results are EMPTY but the claim is MUNDANE/SPECIFIC (e.g. "I ate a burger"), call UNVERIFIED.
-- Be funny, witty, and sharp in the spoken_summary.
+- If the claim describes a scammy payout with a fake tax or release fee, call it CAP and roast the scam logic, not the victim.
+- Be funny, witty, sharp, and dismissive in the spoken_summary when the verdict is CAP.
 - Keep the spoken_summary to 1 short sentence.
 
 Output EXACTLY this JSON format:
@@ -398,11 +590,39 @@ Output EXACTLY this JSON format:
     if (!text) throw new Error('Empty AI response');
 
     const result = JSON.parse(text);
+    const parsedVerdict: CapApiVerdict =
+      result.verdict === 'CAP' || result.verdict === 'NO_CAP' || result.verdict === 'HALF_CAP' || result.verdict === 'UNVERIFIED'
+        ? result.verdict
+        : 'UNVERIFIED';
+    let verdict = parsedVerdict;
+    let confidence = clampConfidence(result.confidence);
+    let reasons = normalizeReasons(result.reasons, 'Cap could not explain the verdict cleanly.');
+
+    if (claimRisk.classicAdvanceFee) {
+      verdict = 'CAP';
+      confidence = Math.max(confidence, 88);
+      reasons = [
+        'This reads like a classic advance-fee scam: the claim invents a huge payout, then adds a fake tax or release fee to squeeze money out of you.',
+        ...reasons,
+      ];
+    } else if (claimRisk.suspiciousWindfall && verdict !== 'NO_CAP') {
+      verdict = 'CAP';
+      confidence = Math.max(confidence, 78);
+      reasons = [
+        'The claim has fake-giveaway energy: oversized reward, shaky proof, and no serious evidence that the payout exists.',
+        ...reasons,
+      ];
+    }
+
+    if (claimRisk.brandBaitCount > 0 && (claimRisk.classicAdvanceFee || claimRisk.suspiciousWindfall)) {
+      reasons.push('Borrowing a recognizable brand plus an absurd reward is a common scam costume, not real proof.');
+    }
+
     return {
-      verdict: result.verdict,
-      confidence: clampConfidence(result.confidence),
-      reasons: result.reasons,
-      spokenSummary: result.spoken_summary,
+      verdict,
+      confidence: clampConfidence(confidence),
+      reasons: reasons.slice(0, 3),
+      spokenSummary: buildSpokenSummary(verdict, reasons[0], claimRisk, result.spoken_summary),
       sources: normalizeSources(results),
       normalizedQuery,
       rawSearchSummary: `AI Synthesis (Plausibility: ${result.plausibility_score}). Sources reviewed: ${results.length}.`,
@@ -435,12 +655,27 @@ function synthesizeVerdictFallback(input: ParsedInput, results: FirecrawlResult[
   const contradictionCount = signals.filter((signal) => signal.credible && signal.contradiction).length;
   const nuanceCount = signals.filter((signal) => signal.credible && signal.nuance).length;
   const selfServingCount = signals.filter((signal) => signal.selfServing).length;
+  const claimRisk = buildClaimRiskProfile(input);
 
   let verdict: CapApiVerdict = 'UNVERIFIED';
   let confidence = 30;
   const reasons: string[] = [];
 
-  if (signals.length === 0 || (credibleCount === 0 && signals.length < 5)) {
+  if (claimRisk.classicAdvanceFee) {
+    verdict = 'CAP';
+    confidence = clampConfidence(84 + contradictionCount * 6 + claimRisk.advanceFeeCount * 4);
+    reasons.push('This reads like a classic advance-fee scam: a giant payout appears first, then a made-up tax or release fee shows up to milk the target.');
+    if (claimRisk.brandBaitCount > 0) {
+      reasons.push('Name-dropping a familiar brand next to a ridiculous reward is scam theater, not evidence.');
+    }
+  } else if (claimRisk.suspiciousWindfall && supportCount === 0) {
+    verdict = 'CAP';
+    confidence = clampConfidence(74 + contradictionCount * 5 + claimRisk.brandBaitCount * 3 + (claimRisk.absurdAmount ? 6 : 0));
+    reasons.push('The claim has the shape of a fake giveaway: oversized reward, weak proof, and no credible confirmation that the payout is real.');
+    if (claimRisk.paymentBaitCount > 0) {
+      reasons.push('Turning a "reward" into a request for money or wallet details is textbook scam bait.');
+    }
+  } else if (signals.length === 0 || (credibleCount === 0 && signals.length < 5)) {
     verdict = 'UNVERIFIED';
     confidence = 24;
     reasons.push('Cap did not find enough reliable sources to verify the claim confidently.');
@@ -466,23 +701,13 @@ function synthesizeVerdictFallback(input: ParsedInput, results: FirecrawlResult[
     reasons.push('The available evidence is too thin or too mixed to make a cleaner call.');
   }
 
-  const variety = {
-    CAP: ['That is cap.', 'Absolute cap.', 'Total fiction.', 'Busted.'],
-    NO_CAP: ['No cap detected.', 'Verified truth.', 'Legit.'],
-    HALF_CAP: ['Half cap.', 'Missing context.', 'Nuanced reality.'],
-    UNVERIFIED: ['Evidence inconclusive.', 'Unverified.', 'Jury is still out.'],
-  };
-
-  const prefixes = variety[verdict];
-  const spokenPrefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-
   return {
     confidence,
     normalizedQuery,
     rawSearchSummary: `Fallback Heistic. Sources: ${signals.length}.`,
     reasons: reasons.slice(0, 3),
     sources: topSources,
-    spokenSummary: `${spokenPrefix} ${reasons[0]}`,
+    spokenSummary: buildSpokenSummary(verdict, reasons[0], claimRisk),
     verdict,
   };
 }
