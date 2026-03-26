@@ -48,6 +48,7 @@ type ClaimRiskProfile = {
   brandBaitCount: number;
   classicAdvanceFee: boolean;
   directAwardLanguage: boolean;
+  impossibleStiClaim: boolean;
   paymentBaitCount: number;
   personalWindfallClaim: boolean;
   suspiciousScam: boolean;
@@ -207,6 +208,31 @@ const DIRECT_AWARD_TERMS = [
   'the user won',
   'they gave me',
   'they said i won',
+];
+
+const STI_TERMS = [
+  'chlamydia',
+  'gonorrhea',
+  'herpes',
+  'hiv',
+  'std',
+  'stds',
+  'sti',
+  'stis',
+  'syphilis',
+];
+
+const INANIMATE_OBJECT_TERMS = [
+  'boulder',
+  'brick',
+  'rock',
+  'stone',
+];
+
+const PHYSICAL_CONTACT_TERMS = [
+  'knack',
+  'knacked',
+  'touched',
 ];
 
 function jsonResponse(body: CheckClaimResponse | CheckClaimError, status: number, origin: string | null) {
@@ -463,6 +489,10 @@ function buildClaimRiskProfile(input: ParsedInput): ClaimRiskProfile {
   const brandBaitCount = countPhraseMatches(text, BRAND_BAIT_TERMS);
   const directAwardLanguage = countPhraseMatches(text, DIRECT_AWARD_TERMS) > 0;
   const urgencyCount = countPhraseMatches(text, URGENCY_TERMS);
+  const impossibleStiClaim =
+    countPhraseMatches(text, STI_TERMS) > 0 &&
+    countPhraseMatches(text, INANIMATE_OBJECT_TERMS) > 0 &&
+    countPhraseMatches(text, PHYSICAL_CONTACT_TERMS) > 0;
   const absurdAmount =
     /\b\d{1,3}(?:,\d{3})+\b/.test(text) ||
     /\b\d+(?:\.\d+)?\s*(million|billion|trillion|bn)\b/.test(text) ||
@@ -481,6 +511,7 @@ function buildClaimRiskProfile(input: ParsedInput): ClaimRiskProfile {
     brandBaitCount,
     classicAdvanceFee,
     directAwardLanguage,
+    impossibleStiClaim,
     paymentBaitCount,
     personalWindfallClaim,
     suspiciousScam,
@@ -509,6 +540,10 @@ function buildSpokenSummary(
 ) {
   const preferred = preferredSummary?.trim();
   if (verdict === 'CAP') {
+    if (risk.impossibleStiClaim) {
+      return 'Cap. That is the cappest cap of all the cap. A stone is not out here handing out STDs.';
+    }
+
     if (risk.personalWindfallClaim && risk.brandBaitCount > 0) {
       return 'Cap. Someone told you that you won a giant brand giveaway, then expected that cartoon scam to sound believable.';
     }
@@ -586,6 +621,7 @@ RULES:
 - Treat giant surprise windfalls, brand-name giveaways, miracle credits, and any "pay a fee/tax/deposit to unlock it" story as CAP unless strong primary-source evidence proves otherwise.
 - If a claim sounds like "I got millions in brand credits / giveaway money," you should assume scam energy and the spoken_summary can openly mock how fake the setup sounds.
 - If the claim is phrased as a personal win or direct message ("someone told me I won...", "they gave me...", "I got millions of credits"), treat that as a strong scam indicator, not a neutral claim.
+- If the claim says an inanimate object like a stone or rock somehow gave someone an STD or STI, call CAP immediately and mock the claim as impossible.
 - If search results are EMPTY but the claim is LUDICROUS/IMPOSSIBLE (e.g. "gravity stopped"), call CAP immediately.
 - If search results are EMPTY but the claim is MUNDANE/SPECIFIC (e.g. "I ate a burger"), call UNVERIFIED.
 - If the claim describes a scammy payout with a fake tax or release fee, call it CAP and roast the scam logic, not the victim.
@@ -629,7 +665,14 @@ Output EXACTLY this JSON format:
     let confidence = clampConfidence(result.confidence);
     let reasons = normalizeReasons(result.reasons, 'Cap could not explain the verdict cleanly.');
 
-    if (claimRisk.classicAdvanceFee) {
+    if (claimRisk.impossibleStiClaim) {
+      verdict = 'CAP';
+      confidence = Math.max(confidence, 96);
+      reasons = [
+        'That claim is physically ridiculous: an inanimate object like a stone does not transmit an STD just because someone says it did.',
+        ...reasons,
+      ];
+    } else if (claimRisk.classicAdvanceFee) {
       verdict = 'CAP';
       confidence = Math.max(confidence, 88);
       reasons = [
@@ -699,7 +742,11 @@ function synthesizeVerdictFallback(input: ParsedInput, results: FirecrawlResult[
   let confidence = 30;
   const reasons: string[] = [];
 
-  if (claimRisk.classicAdvanceFee) {
+  if (claimRisk.impossibleStiClaim) {
+    verdict = 'CAP';
+    confidence = 97;
+    reasons.push('That claim is physically ridiculous: a stone does not hand out STDs, so this is pure nonsense.');
+  } else if (claimRisk.classicAdvanceFee) {
     verdict = 'CAP';
     confidence = clampConfidence(84 + contradictionCount * 6 + claimRisk.advanceFeeCount * 4);
     reasons.push('This reads like a classic advance-fee scam: a giant payout appears first, then a made-up tax or release fee shows up to milk the target.');
